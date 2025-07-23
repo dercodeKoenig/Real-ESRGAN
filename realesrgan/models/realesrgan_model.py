@@ -32,6 +32,7 @@ class RealESRGANModel(SRGANModel):
         # Initialize AMP components
         self.use_amp = opt.get('use_amp', True)  # Enable AMP by default
         if self.use_amp:
+            print("amp enabled")
             self.scaler_g = GradScaler()
             self.scaler_d = GradScaler()
 
