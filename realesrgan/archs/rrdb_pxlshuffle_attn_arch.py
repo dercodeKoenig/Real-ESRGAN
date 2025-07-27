@@ -163,9 +163,10 @@ class RRDBNet_pxlshuffle_attn(nn.Module):
         num_grow_ch (int): Channels for each growth. Default: 32.
     """
 
-    def __init__(self, num_in_ch, num_out_ch, scale=4, num_feat=64, num_block=23, num_grow_ch=32, heads = 4, patch_size = 32, embed_dim = 128):
+    def __init__(self, num_in_ch, num_out_ch, scale=4, num_feat=64, num_block=23, num_grow_ch=32, heads=4, patch_size=32, embed_dim=128, clear_cache=False):
         super(RRDBNet_pxlshuffle_attn, self).__init__()
         self.scale = scale
+        self.clear_cache = clear_cache
         if scale == 2:
             num_in_ch = num_in_ch * 4
             self.scale *= 2
@@ -174,7 +175,15 @@ class RRDBNet_pxlshuffle_attn(nn.Module):
             self.scale *= 4
 
         self.conv_first = nn.Conv2d(num_in_ch, num_feat, 3, 1, 1)
-        self.body = make_layer(RRDB, num_block, num_feat=num_feat, num_grow_ch=num_grow_ch, heads = heads, patch_size = patch_size, embed_dim = embed_dim)
+        
+        # Create RRDB blocks as ModuleList for sequential processing
+        self.rrdb_blocks = nn.ModuleList()
+        for i in range(num_block):
+            self.rrdb_blocks.append(
+                RRDB(num_feat=num_feat, num_grow_ch=num_grow_ch, 
+                     heads=heads, patch_size=patch_size, embed_dim=embed_dim)
+            )
+        
         self.conv_body = nn.Conv2d(num_feat, num_feat, 3, 1, 1)
 
         # upsample
@@ -189,8 +198,22 @@ class RRDBNet_pxlshuffle_attn(nn.Module):
             feat = pixel_unshuffle(x, scale=4)
         else:
             feat = x
+            
         feat = self.conv_first(feat)
-        feat = self.lrelu(self.conv_body(self.body(feat)))
+        body_feat = feat
+        
+        # Process RRDB blocks sequentially with optional memory cleanup
+        for i, rrdb_block in enumerate(self.rrdb_blocks):
+            body_feat = rrdb_block(body_feat)
+            
+            # Optional: Force garbage collection after every block if requested
+            if self.clear_cache:
+                torch.cuda.empty_cache() if torch.cuda.is_available() else None
+        
+        # Apply residual connection from input to body
+        body_feat = body_feat + feat
+        feat = self.lrelu(self.conv_body(body_feat))
+        
         # upsample
         feat = self.conv_last(feat)
         out = self.upsampler(feat)
