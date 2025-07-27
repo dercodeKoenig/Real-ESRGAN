@@ -121,14 +121,14 @@ class RRDB(nn.Module):
         num_grow_ch (int): Channels for each growth.
     """
 
-    def __init__(self, num_feat, num_grow_ch=32, heads = 4, patch_size = 32):
+    def __init__(self, num_feat, num_grow_ch=32, heads = 4, patch_size = 32, embed_dim = 128):
         super(RRDB, self).__init__()
         self.rdb1 = ResidualDenseBlock(num_feat, num_grow_ch)
         self.rdb2 = ResidualDenseBlock(num_feat, num_grow_ch)
         self.rdb3 = ResidualDenseBlock(num_feat, num_grow_ch)
         self.heads = heads
         if heads > 0:
-          self.attn = PatchAttentionModule(in_channels=num_feat, patch_size=patch_size, heads = heads)
+          self.attn = PatchAttentionModule(in_channels=num_feat, patch_size=patch_size, heads = heads, embed_dim = embed_dim)
 
     def forward(self, x):
         out = self.rdb1(x)
@@ -163,7 +163,7 @@ class RRDBNet_pxlshuffle_attn(nn.Module):
         num_grow_ch (int): Channels for each growth. Default: 32.
     """
 
-    def __init__(self, num_in_ch, num_out_ch, scale=4, num_feat=64, num_block=23, num_grow_ch=32, heads = 4, patch_size = 32):
+    def __init__(self, num_in_ch, num_out_ch, scale=4, num_feat=64, num_block=23, num_grow_ch=32, heads = 4, patch_size = 32, embed_dim = 128):
         super(RRDBNet_pxlshuffle_attn, self).__init__()
         self.scale = scale
         if scale == 2:
@@ -174,7 +174,7 @@ class RRDBNet_pxlshuffle_attn(nn.Module):
             self.scale *= 4
 
         self.conv_first = nn.Conv2d(num_in_ch, num_feat, 3, 1, 1)
-        self.body = make_layer(RRDB, num_block, num_feat=num_feat, num_grow_ch=num_grow_ch, heads = heads, patch_size = patch_size)
+        self.body = make_layer(RRDB, num_block, num_feat=num_feat, num_grow_ch=num_grow_ch, heads = heads, patch_size = patch_size, embed_dim = embed_dim)
         self.conv_body = nn.Conv2d(num_feat, num_feat, 3, 1, 1)
 
         # upsample
