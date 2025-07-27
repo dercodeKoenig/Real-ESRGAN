@@ -208,7 +208,14 @@ class RRDBNet_pxlshuffle_attn(nn.Module):
             
             # Optional: Force garbage collection after every block if requested
             if self.clear_cache:
-                torch.cuda.empty_cache() if torch.cuda.is_available() else None
+                # Force garbage collection
+                import gc
+                gc.collect()
+                
+                # Clear CUDA cache
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                    torch.cuda.synchronize()  # Wait for all operations to complete
         
         # Apply residual connection from input to body
         body_feat = body_feat + feat
