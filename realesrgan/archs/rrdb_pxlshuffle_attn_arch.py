@@ -148,7 +148,7 @@ class RRDB(nn.Module):
 @ARCH_REGISTRY.register()
 class RRDBNet_pxlshuffle_attn(nn.Module):
     def __init__(self, num_in_ch, num_out_ch, scale=4, num_feat=64, num_block=23, num_grow_ch=32, 
-                 heads=4, patch_size=32, embed_dim=128, cpu_offload=False):
+                 heads=0, patch_size=32, embed_dim=128, cpu_offload=False):
         super(RRDBNet_pxlshuffle_attn, self).__init__()
         self.scale = scale
         self.cpu_offload = cpu_offload
