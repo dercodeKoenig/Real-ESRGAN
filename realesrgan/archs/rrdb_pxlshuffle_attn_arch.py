@@ -144,29 +144,12 @@ class RRDB(nn.Module):
 
 @ARCH_REGISTRY.register()
 class RRDBNet_pxlshuffle_attn(nn.Module):
-    """Networks consisting of Residual in Residual Dense Block, which is used
-    in ESRGAN.
-
-    ESRGAN: Enhanced Super-Resolution Generative Adversarial Networks.
-
-    We extend ESRGAN for scale x2 and scale x1.
-    Note: This is one option for scale 1, scale 2 in RRDBNet.
-    We first employ the pixel-unshuffle (an inverse operation of pixelshuffle to reduce the spatial size
-    and enlarge the channel size before feeding inputs into the main ESRGAN architecture.
-
-    Args:
-        num_in_ch (int): Channel number of inputs.
-        num_out_ch (int): Channel number of outputs.
-        num_feat (int): Channel number of intermediate features.
-            Default: 64
-        num_block (int): Block number in the trunk network. Defaults: 23
-        num_grow_ch (int): Channels for each growth. Default: 32.
-    """
-
-    def __init__(self, num_in_ch, num_out_ch, scale=4, num_feat=64, num_block=23, num_grow_ch=32, heads=4, patch_size=32, embed_dim=128, clear_cache=False):
-        super(RRDBNet_pxlshuffle_attn, self).__init__()
+    def __init__(self, num_in_ch, num_out_ch, scale=4, num_feat=64, num_block=23, num_grow_ch=32, 
+                 heads=4, patch_size=32, embed_dim=128, cpu_offload=False):
+        super(RRDBNet_pxlshuffle_attn_offload, self).__init__()
         self.scale = scale
-        self.clear_cache = clear_cache
+        self.cpu_offload = cpu_offload
+        
         if scale == 2:
             num_in_ch = num_in_ch * 4
             self.scale *= 2
@@ -176,22 +159,38 @@ class RRDBNet_pxlshuffle_attn(nn.Module):
 
         self.conv_first = nn.Conv2d(num_in_ch, num_feat, 3, 1, 1)
         
-        # Create RRDB blocks as ModuleList for sequential processing
+        # Create RRDB blocks
         self.rrdb_blocks = nn.ModuleList()
         for i in range(num_block):
-            self.rrdb_blocks.append(
-                RRDB(num_feat=num_feat, num_grow_ch=num_grow_ch, 
-                     heads=heads, patch_size=patch_size, embed_dim=embed_dim)
-            )
+            block = RRDB(num_feat=num_feat, num_grow_ch=num_grow_ch, 
+                        heads=heads, patch_size=patch_size, embed_dim=embed_dim)
+            self.rrdb_blocks.append(block)
         
         self.conv_body = nn.Conv2d(num_feat, num_feat, 3, 1, 1)
-
-        # upsample
         self.conv_last = nn.Conv2d(num_feat, num_out_ch * scale * scale, 3, 1, 1)
         self.upsampler = nn.PixelShuffle(scale)
         self.lrelu = nn.LeakyReLU(negative_slope=0.2, inplace=True)
 
+    def to(self, device):
+        """Override to handle CPU offloading"""
+        if self.cpu_offload:
+            # Keep main layers on GPU
+            self.conv_first = self.conv_first.to(device)
+            self.conv_body = self.conv_body.to(device)
+            self.conv_last = self.conv_last.to(device)
+            self.upsampler = self.upsampler.to(device)
+            
+            # Keep RRDB blocks on CPU initially
+            for block in self.rrdb_blocks:
+                block.to('cpu')
+        else:
+            # Normal behavior - everything on GPU
+            super().to(device)
+        return self
+
     def forward(self, x):
+        device = x.device
+        
         if self.scale == 2:
             feat = pixel_unshuffle(x, scale=2)
         elif self.scale == 1:
@@ -202,26 +201,27 @@ class RRDBNet_pxlshuffle_attn(nn.Module):
         feat = self.conv_first(feat)
         body_feat = feat
         
-        # Process RRDB blocks sequentially with optional memory cleanup
+        # Process RRDB blocks with CPU offloading
         for i, rrdb_block in enumerate(self.rrdb_blocks):
-            body_feat = rrdb_block(body_feat)
-            
-            # Optional: Force garbage collection after every block if requested
-            if self.clear_cache:
-                # Force garbage collection
-                import gc
-                gc.collect()
+            if self.cpu_offload:
+                # Move current block to GPU
+                rrdb_block.to(device)
                 
-                # Clear CUDA cache
+                # Process
+                body_feat = rrdb_block(body_feat)
+                
+                # Move block back to CPU to free GPU memory
+                rrdb_block.to('cpu')
+                
+                # Clear cache after each block
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
-                    torch.cuda.synchronize()  # Wait for all operations to complete
+            else:
+                body_feat = rrdb_block(body_feat)
         
-        # Apply residual connection from input to body
+        # Apply residual connection and final processing
         body_feat = body_feat + feat
         feat = self.lrelu(self.conv_body(body_feat))
-        
-        # upsample
         feat = self.conv_last(feat)
         out = self.upsampler(feat)
         return out
