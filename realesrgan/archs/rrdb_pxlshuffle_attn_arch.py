@@ -9,6 +9,9 @@ from basicsr.archs.arch_util import default_init_weights, make_layer, pixel_unsh
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from tqdm import tqdm
+import gc
+
 
 class PatchAttentionModule(nn.Module):
     def __init__(self, in_channels, patch_size=32, embed_dim=128, heads = 4):
@@ -174,54 +177,139 @@ class RRDBNet_pxlshuffle_attn(nn.Module):
     def to(self, device):
         """Override to handle CPU offloading"""
         if self.cpu_offload:
-            # Keep main layers on GPU
-            self.conv_first = self.conv_first.to(device)
-            self.conv_body = self.conv_body.to(device)
-            self.conv_last = self.conv_last.to(device)
-            self.upsampler = self.upsampler.to(device)
-            
-            # Keep RRDB blocks on CPU initially
+            print("CPU offload is enabled!")
+            self.target_device = device
+            # Move everything to CPU initially
+            self.conv_first.to('cpu')
+            self.conv_body.to('cpu') 
+            self.conv_last.to('cpu')
+            self.upsampler.to('cpu')
             for block in self.rrdb_blocks:
                 block.to('cpu')
         else:
-            # Normal behavior - everything on GPU
             super().to(device)
         return self
 
+    def _clear_memory(self):
+        """Aggressive memory clearing for inference"""
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()
+
+    def _move_to_cpu_safe(self, tensor):
+        """Safely move tensor to CPU and clear GPU memory"""
+        if tensor.device.type == 'cuda':
+            cpu_tensor = tensor.cpu()
+            del tensor
+            self._clear_memory()
+            return cpu_tensor
+        return tensor
+
+    @torch.no_grad()  # Ensure no gradients for inference
     def forward(self, x):
-        device = x.device
-        
+        # Handle input scaling
         if self.scale == 2:
             feat = pixel_unshuffle(x, scale=2)
         elif self.scale == 1:
             feat = pixel_unshuffle(x, scale=4)
         else:
             feat = x
-            
-        feat = self.conv_first(feat)
+        
+        # Process first convolution
+        if self.cpu_offload:
+            self.conv_first.to(self.target_device)
+            feat = self.conv_first(feat)
+            self.conv_first.to('cpu')
+            self._clear_memory()
+        else:
+            feat = self.conv_first(feat)
+
+        # Store residual connection - move to CPU to free GPU memory
+        if self.cpu_offload:
+            residual = self._move_to_cpu_safe(feat.clone())
+        else:
+            residual = feat.clone()  # Clone to avoid in-place operations
+
         body_feat = feat
         
-        # Process RRDB blocks with CPU offloading
-        for i, rrdb_block in enumerate(self.rrdb_blocks):
-            if self.cpu_offload:
-                # Move current block to GPU
-                rrdb_block.to(device)
+        # Process RRDB blocks with CPU offloading and intermediate CPU storage
+        if self.cpu_offload:
+            for i, rrdb_block in enumerate(tqdm(self.rrdb_blocks, desc="Processing RRDB blocks")):
+                # Move block to GPU
+                rrdb_block.to(self.target_device)
                 
-                # Process
-                body_feat = rrdb_block(body_feat)
+                # Process block
+                new_body_feat = rrdb_block(body_feat)
                 
-                # Move block back to CPU to free GPU memory
+                # Immediately move block back to CPU
                 rrdb_block.to('cpu')
                 
-                # Clear cache after each block
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-            else:
+                # For intermediate blocks, store result on CPU to free GPU memory
+                if i < len(self.rrdb_blocks) - 1:  # Not the last block
+                    # Delete old body_feat first
+                    del body_feat
+                    # Move result to CPU, then back to GPU for next iteration
+                    body_feat_cpu = self._move_to_cpu_safe(new_body_feat)
+                    body_feat = body_feat_cpu.to(self.target_device)
+                    del body_feat_cpu
+                else:
+                    # Last block - keep on GPU
+                    del body_feat
+                    body_feat = new_body_feat
+                
+                # Clear memory every block
+                self._clear_memory()
+        else:
+            for rrdb_block in self.rrdb_blocks:
                 body_feat = rrdb_block(body_feat)
         
-        # Apply residual connection and final processing
-        body_feat = body_feat + feat
-        feat = self.lrelu(self.conv_body(body_feat))
-        feat = self.conv_last(feat)
-        out = self.upsampler(feat)
+        # Apply residual connection
+        if self.cpu_offload:
+            # Move residual back to GPU for addition
+            residual = residual.to(self.target_device)
+            body_feat = body_feat + residual
+            # Explicitly delete residual to free memory
+            del residual
+            self._clear_memory()
+        else:
+            body_feat = body_feat + residual
+            del residual  # Free residual even in non-CPU offload mode
+
+        # Process conv_body
+        if self.cpu_offload:
+            self.conv_body.to(self.target_device)
+            feat = self.conv_body(body_feat)
+            del body_feat  # Free body_feat
+            self.conv_body.to('cpu')
+            self._clear_memory()
+        else:
+            feat = self.conv_body(body_feat)
+            del body_feat  # Free body_feat
+
+        # Apply LeakyReLU in-place to save memory
+        feat = self.lrelu(feat)
+
+        # Process final convolution
+        if self.cpu_offload:
+            self.conv_last.to(self.target_device)
+            final_feat = self.conv_last(feat)
+            del feat  # Free feat
+            self.conv_last.to('cpu')
+            self._clear_memory()
+        else:
+            final_feat = self.conv_last(feat)
+            del feat  # Free feat
+
+        # Upsampling
+        if self.cpu_offload:
+            self.upsampler.to(self.target_device)
+            out = self.upsampler(final_feat)
+            del final_feat  # Free final_feat
+            self.upsampler.to('cpu')
+            self._clear_memory()
+        else:
+            out = self.upsampler(final_feat)
+            del final_feat  # Free final_feat
+        
         return out
