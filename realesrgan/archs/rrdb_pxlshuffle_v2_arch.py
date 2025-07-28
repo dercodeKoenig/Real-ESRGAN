@@ -85,7 +85,7 @@ class RRDBNet_pxlshuffle_v2(nn.Module):
     """
 
     def __init__(self, num_in_ch, num_out_ch, scale=4, num_feat=64, num_block=23, num_grow_ch=32, num_pre_upscale_ch = 128):
-        super(RRDBNet_pxlshuffle, self).__init__()
+        super(RRDBNet_pxlshuffle_v2, self).__init__()
         self.scale = scale
         if scale == 2:
             num_in_ch = num_in_ch * 4
