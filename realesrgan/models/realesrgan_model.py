@@ -35,10 +35,10 @@ class RealESRGANModel(SRGANModel):
         self.scaler_d = GradScaler()
         
         # Adaptive discriminator training parameters
-        self.adaptive_d_training = opt.get('adaptive_d_training', True)
-        self.d_loss_threshold = opt.get('d_loss_threshold', 0.01)  # When D loss < this, slow down D updates
-        self.d_slow_iters = opt.get('d_slow_iters', 5)  # Update D every 5 steps when loss is low
-        self.d_normal_iters = opt.get('d_normal_iters', 1)  # Normal D update frequency
+        self.adaptive_d_training = opt['train'].get('adaptive_d_training', True)
+        self.d_loss_threshold = opt['train'].get('d_loss_threshold', 0.01)  # When D loss < this, slow down D updates
+        self.d_slow_iters = opt['train'].get('d_slow_iters', 5)  # Update D every 5 steps when loss is low
+        self.d_normal_iters = opt['train'].get('d_normal_iters', 1)  # Normal D update frequency
         
         # Track discriminator update counter and cached values
         self.d_update_counter = 0
