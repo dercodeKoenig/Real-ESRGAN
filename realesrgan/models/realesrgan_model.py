@@ -259,6 +259,8 @@ class RealESRGANModel(SRGANModel):
 
             l_g_total = 0
             loss_dict = OrderedDict()
+            
+            # Generator updates every iteration (after warmup)
             if current_iter % self.net_d_iters == 0 and current_iter > self.net_d_init_iters:
                 # pixel loss
                 if self.cri_pix:
@@ -324,20 +326,12 @@ class RealESRGANModel(SRGANModel):
             self.cached_d_fake = l_d_fake.item()
             self.cached_out_d_real = out_d_real.item()
             self.cached_out_d_fake = out_d_fake.item()
-            
-            # Log current values
-            loss_dict['l_d_real'] = l_d_real
-            loss_dict['l_d_fake'] = l_d_fake
-            loss_dict['out_d_real'] = out_d_real
-            loss_dict['out_d_fake'] = out_d_fake
-        else:
-            # Use cached values from last time we computed them - no forward pass needed!
-            loss_dict['l_d_real'] = self.cached_d_real
-            loss_dict['l_d_fake'] = self.cached_d_fake
-            loss_dict['out_d_real'] = self.cached_out_d_real
-            loss_dict['out_d_fake'] = self.cached_out_d_fake
-
-        # Add adaptive training info to logs
+        
+        # Always assign from cache (whether we just updated it or using old values)
+        loss_dict['l_d_real'] = self.cached_d_real
+        loss_dict['l_d_fake'] = self.cached_d_fake
+        loss_dict['out_d_real'] = self.cached_out_d_real
+        loss_dict['out_d_fake'] = self.cached_out_d_fake
         loss_dict['d_total_loss'] = self.cached_d_loss
         loss_dict['d_updated'] = float(should_update_d)
 
