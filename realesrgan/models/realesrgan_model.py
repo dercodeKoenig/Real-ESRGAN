@@ -30,11 +30,29 @@ class RealESRGANModel(SRGANModel):
         self.queue_size = opt.get('queue_size', 180)
         
         # Initialize AMP components
-        self.use_amp = opt.get('use_amp', True)  # Enable AMP by default
-        if self.use_amp:
-            print("amp enabled")
-            self.scaler_g = GradScaler()
-            self.scaler_d = GradScaler()
+        print("AMP enabled")
+        self.scaler_g = GradScaler()
+        self.scaler_d = GradScaler()
+        
+        # Adaptive discriminator training parameters
+        self.adaptive_d_training = opt.get('adaptive_d_training', True)
+        self.d_loss_threshold = opt.get('d_loss_threshold', 0.01)  # When D loss < this, slow down D updates
+        self.d_slow_iters = opt.get('d_slow_iters', 5)  # Update D every 5 steps when loss is low
+        self.d_normal_iters = opt.get('d_normal_iters', 1)  # Normal D update frequency
+        
+        # Track discriminator update counter and cached values
+        self.d_update_counter = 0
+        self.cached_d_loss = float('inf')  # Initialize with high value to ensure first update
+        self.cached_d_real = 0.0
+        self.cached_d_fake = 0.0
+        self.cached_out_d_real = 0.0
+        self.cached_out_d_fake = 0.0
+        
+        print(f"Adaptive D training: {self.adaptive_d_training}")
+        if self.adaptive_d_training:
+            print(f"D loss threshold: {self.d_loss_threshold}")
+            print(f"D slow update interval: {self.d_slow_iters}")
+            print(f"D normal update interval: {self.d_normal_iters}")
 
     @torch.no_grad()
     def _dequeue_and_enqueue(self):
@@ -198,6 +216,24 @@ class RealESRGANModel(SRGANModel):
         super(RealESRGANModel, self).nondist_validation(dataloader, current_iter, tb_logger, save_img)
         self.is_train = True
 
+    def _should_update_discriminator(self, current_iter):
+        """Determine if discriminator should be updated based on adaptive strategy using cached loss."""
+        if not self.adaptive_d_training:
+            # Use original logic - update D every iteration after init period
+            return current_iter > self.net_d_init_iters
+        
+        # Always skip during initial discriminator training period
+        if current_iter <= self.net_d_init_iters:
+            return False
+            
+        # Adaptive strategy based on cached discriminator loss from previous iteration
+        if self.cached_d_loss < self.d_loss_threshold:
+            # D is too strong, update less frequently
+            return self.d_update_counter % self.d_slow_iters == 0
+        else:
+            # D loss is reasonable, update normally
+            return self.d_update_counter % self.d_normal_iters == 0
+
     def optimize_parameters(self, current_iter):
         # usm sharpening
         l1_gt = self.gt_usm
@@ -216,53 +252,14 @@ class RealESRGANModel(SRGANModel):
 
         self.optimizer_g.zero_grad()
         
-        if self.use_amp:
-            with autocast('cuda'):
-                self.output = self.net_g(self.lq)
-                if self.cri_ldl:
-                    self.output_ema = self.net_g_ema(self.lq)
-
-                l_g_total = 0
-                loss_dict = OrderedDict()
-                if (current_iter % self.net_d_iters == 0 and current_iter > self.net_d_init_iters):
-                    # pixel loss
-                    if self.cri_pix:
-                        l_g_pix = self.cri_pix(self.output, l1_gt)
-                        l_g_total += l_g_pix
-                        loss_dict['l_g_pix'] = l_g_pix
-                    if self.cri_ldl:
-                        pixel_weight = get_refined_artifact_map(self.gt, self.output, self.output_ema, 7)
-                        l_g_ldl = self.cri_ldl(torch.mul(pixel_weight, self.output), torch.mul(pixel_weight, self.gt))
-                        l_g_total += l_g_ldl
-                        loss_dict['l_g_ldl'] = l_g_ldl
-                    # perceptual loss
-                    if self.cri_perceptual:
-                        l_g_percep, l_g_style = self.cri_perceptual(self.output, percep_gt)
-                        if l_g_percep is not None:
-                            l_g_total += l_g_percep
-                            loss_dict['l_g_percep'] = l_g_percep
-                        if l_g_style is not None:
-                            l_g_total += l_g_style
-                            loss_dict['l_g_style'] = l_g_style
-                    # gan loss
-                    fake_g_pred = self.net_d(self.output)
-                    l_g_gan = self.cri_gan(fake_g_pred, True, is_disc=False)
-                    l_g_total += l_g_gan
-                    loss_dict['l_g_gan'] = l_g_gan
-
-            if (current_iter % self.net_d_iters == 0 and current_iter > self.net_d_init_iters):
-                self.scaler_g.scale(l_g_total).backward()
-                self.scaler_g.step(self.optimizer_g)
-                self.scaler_g.update()
-        else:
-            # Original non-AMP code
+        with autocast('cuda'):
             self.output = self.net_g(self.lq)
             if self.cri_ldl:
                 self.output_ema = self.net_g_ema(self.lq)
 
             l_g_total = 0
             loss_dict = OrderedDict()
-            if (current_iter % self.net_d_iters == 0 and current_iter > self.net_d_init_iters):
+            if current_iter % self.net_d_iters == 0 and current_iter > self.net_d_init_iters:
                 # pixel loss
                 if self.cri_pix:
                     l_g_pix = self.cri_pix(self.output, l1_gt)
@@ -288,50 +285,61 @@ class RealESRGANModel(SRGANModel):
                 l_g_total += l_g_gan
                 loss_dict['l_g_gan'] = l_g_gan
 
-                l_g_total.backward()
-                self.optimizer_g.step()
+                self.scaler_g.scale(l_g_total).backward()
+                self.scaler_g.step(self.optimizer_g)
+                self.scaler_g.update()
 
-        # optimize net_d
+        # optimize net_d with adaptive strategy
         for p in self.net_d.parameters():
             p.requires_grad = True
 
-        self.optimizer_d.zero_grad()
+        # Increment counter and check if we should update discriminator (using cached loss)
+        self.d_update_counter += 1
+        should_update_d = self._should_update_discriminator(current_iter)
         
-        if self.use_amp:
+        if should_update_d:
+            self.optimizer_d.zero_grad()
+            
             with autocast('cuda'):
                 # real
                 real_d_pred = self.net_d(gan_gt)
                 l_d_real = self.cri_gan(real_d_pred, True, is_disc=True)
-                loss_dict['l_d_real'] = l_d_real
-                loss_dict['out_d_real'] = torch.mean(real_d_pred.detach())
+                out_d_real = torch.mean(real_d_pred.detach())
             
             self.scaler_d.scale(l_d_real).backward()
             
             with autocast('cuda'):
                 # fake
-                fake_d_pred = self.net_d(self.output.detach().clone())  # clone for pt1.9
+                fake_d_pred = self.net_d(self.output.detach().clone())
                 l_d_fake = self.cri_gan(fake_d_pred, False, is_disc=True)
-                loss_dict['l_d_fake'] = l_d_fake
-                loss_dict['out_d_fake'] = torch.mean(fake_d_pred.detach())
+                out_d_fake = torch.mean(fake_d_pred.detach())
             
             self.scaler_d.scale(l_d_fake).backward()
             self.scaler_d.step(self.optimizer_d)
             self.scaler_d.update()
-        else:
-            # Original non-AMP code
-            # real
-            real_d_pred = self.net_d(gan_gt)
-            l_d_real = self.cri_gan(real_d_pred, True, is_disc=True)
+            
+            # Cache all discriminator values for future logging when we skip updates
+            self.cached_d_loss = (l_d_real + l_d_fake).item()
+            self.cached_d_real = l_d_real.item()
+            self.cached_d_fake = l_d_fake.item()
+            self.cached_out_d_real = out_d_real.item()
+            self.cached_out_d_fake = out_d_fake.item()
+            
+            # Log current values
             loss_dict['l_d_real'] = l_d_real
-            loss_dict['out_d_real'] = torch.mean(real_d_pred.detach())
-            l_d_real.backward()
-            # fake
-            fake_d_pred = self.net_d(self.output.detach().clone())  # clone for pt1.9
-            l_d_fake = self.cri_gan(fake_d_pred, False, is_disc=True)
             loss_dict['l_d_fake'] = l_d_fake
-            loss_dict['out_d_fake'] = torch.mean(fake_d_pred.detach())
-            l_d_fake.backward()
-            self.optimizer_d.step()
+            loss_dict['out_d_real'] = out_d_real
+            loss_dict['out_d_fake'] = out_d_fake
+        else:
+            # Use cached values from last time we computed them - no forward pass needed!
+            loss_dict['l_d_real'] = self.cached_d_real
+            loss_dict['l_d_fake'] = self.cached_d_fake
+            loss_dict['out_d_real'] = self.cached_out_d_real
+            loss_dict['out_d_fake'] = self.cached_out_d_fake
+
+        # Add adaptive training info to logs
+        loss_dict['d_total_loss'] = self.cached_d_loss
+        loss_dict['d_updated'] = float(should_update_d)
 
         if self.ema_decay > 0:
             self.model_ema(decay=self.ema_decay)
