@@ -42,11 +42,13 @@ class RealESRGANModel(SRGANModel):
         
         # Track discriminator update counter and cached values
         self.d_update_counter = 0
-        self.cached_d_loss = float('inf')  # Initialize with high value to ensure first update
-        self.cached_d_real = 0.0
-        self.cached_d_fake = 0.0
-        self.cached_out_d_real = 0.0
-        self.cached_out_d_fake = 0.0
+        self.cached_d_loss_value = float('inf')  # Initialize with high value to ensure first update
+        
+        # Cache tensor values instead of floats - initialize as tensors
+        self.cached_d_real = torch.tensor(0.0, device='cuda')
+        self.cached_d_fake = torch.tensor(0.0, device='cuda')
+        self.cached_out_d_real = torch.tensor(0.0, device='cuda')
+        self.cached_out_d_fake = torch.tensor(0.0, device='cuda')
         
         print(f"Adaptive D training: {self.adaptive_d_training}")
         if self.adaptive_d_training:
@@ -227,7 +229,7 @@ class RealESRGANModel(SRGANModel):
             return False
             
         # Adaptive strategy based on cached discriminator loss from previous iteration
-        if self.cached_d_loss < self.d_loss_threshold:
+        if self.cached_d_loss_value < self.d_loss_threshold:
             # D is too strong, update less frequently
             return self.d_update_counter % self.d_slow_iters == 0
         else:
@@ -320,20 +322,20 @@ class RealESRGANModel(SRGANModel):
             self.scaler_d.step(self.optimizer_d)
             self.scaler_d.update()
             
-            # Cache all discriminator values for future logging when we skip updates
-            self.cached_d_loss = (l_d_real + l_d_fake).item()
-            self.cached_d_real = l_d_real.item()
-            self.cached_d_fake = l_d_fake.item()
-            self.cached_out_d_real = out_d_real.item()
-            self.cached_out_d_fake = out_d_fake.item()
+            # Cache tensor values (not converted to float) and the total loss value for threshold comparison
+            self.cached_d_loss_value = (l_d_real + l_d_fake).item()  # For threshold comparison
+            self.cached_d_real = l_d_real.detach()  # Keep as tensor
+            self.cached_d_fake = l_d_fake.detach()  # Keep as tensor
+            self.cached_out_d_real = out_d_real  # Keep as tensor
+            self.cached_out_d_fake = out_d_fake  # Keep as tensor
         
         # Always assign from cache (whether we just updated it or using old values)
         loss_dict['l_d_real'] = self.cached_d_real
         loss_dict['l_d_fake'] = self.cached_d_fake
         loss_dict['out_d_real'] = self.cached_out_d_real
         loss_dict['out_d_fake'] = self.cached_out_d_fake
-        loss_dict['d_total_loss'] = self.cached_d_loss
-        loss_dict['d_updated'] = float(should_update_d)
+        loss_dict['d_total_loss'] = torch.tensor(self.cached_d_loss_value, device=self.cached_d_real.device)
+        loss_dict['d_updated'] = torch.tensor(float(should_update_d), device=self.cached_d_real.device)
 
         if self.ema_decay > 0:
             self.model_ema(decay=self.ema_decay)
