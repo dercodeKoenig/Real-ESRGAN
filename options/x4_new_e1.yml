@@ -164,7 +164,7 @@ train:
 
   # Adaptive discriminator training
   adaptive_d_training: true
-  d_loss_threshold: 0.2  # Adjust based on your typical D loss values
+  d_loss_threshold: 0.1  # Adjust based on your typical D loss values
   d_slow_iters: 20         # Update D every x steps when loss < threshold
   d_normal_iters: 1       # Normal update frequency
 
