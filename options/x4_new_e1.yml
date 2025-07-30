@@ -1,5 +1,5 @@
 # general settings
-name: train_RealESRGANx4
+name: train_v3_x4
 model_type: RealESRGANModel
 scale: 4
 num_gpu: auto  # auto: can infer from your visible devices automatically. official: 4 GPUs
@@ -30,7 +30,7 @@ poisson_scale_range2: [0.05, 2.5]
 gray_noise_prob2: 0.4
 jpeg_range2: [30, 95]
 
-gt_size: 256
+gt_size: 512
 queue_size: 64
 
 # dataset and data loader settings
@@ -61,14 +61,14 @@ datasets:
 
     final_sinc_prob: 0.8
 
-    gt_size: 256
+    gt_size: 512
     use_hflip: True
     use_rot: False
 
     # data loader
     use_shuffle: true
-    num_worker_per_gpu: 12
-    batch_size_per_gpu: 12
+    num_worker_per_gpu: 4
+    batch_size_per_gpu: 2
     dataset_enlarge_ratio: 1
     prefetch_mode: ~
 
@@ -83,24 +83,26 @@ datasets:
 
 # network structures
 network_g:
-  type: RRDBNet
+  type: RRDBNet_pxlshuffle_v3
   num_in_ch: 3
   num_out_ch: 3
-  num_feat: 64
+  num_feat: 128
   num_block: 23
   num_grow_ch: 32
   scale: 4
+  num_pre_upscale_ch: 256
+  num_final_ch: 24
 
 network_d:
   type: UNetDiscriminatorSN
   num_in_ch: 3
-  num_feat: 64
+  num_feat: 128
   skip_connection: True
 
 # path
 path:
   # use the pre-trained Real-ESRNet model
-  pretrain_network_g:
+  pretrain_network_g: 
   param_key_g: params_ema
   strict_load_g: true
   resume_state: 
@@ -110,12 +112,12 @@ train:
   ema_decay: 0.999
   optim_g:
     type: Adam
-    lr: 0.000025
+    lr: 0.00005
     weight_decay: 0
     betas: [0.9, 0.99]
   optim_d:
     type: Adam
-    lr: 0.000025
+    lr: 0.00005
     weight_decay: 0
     betas: [0.9, 0.99]
 
@@ -131,7 +133,7 @@ train:
   # losses
   pixel_opt:
     type: L1Loss
-    loss_weight: 5.0
+    loss_weight: 0.5
     reduction: mean
   # perceptual loss (content and style losses)
   perceptual_opt:
@@ -145,25 +147,31 @@ train:
       'conv5_4': 1
     vgg_type: vgg19
     use_input_norm: true
-    perceptual_weight: !!float 1.0
+    perceptual_weight: 1.0
     style_weight: 0
     range_norm: false
     criterion: l1
   # gan loss
   gan_opt:
     type: GANLoss
-    gan_type: vanilla
+    gan_type: lsgan
     real_label_val: 1.0
     fake_label_val: 0.0
-    loss_weight: !!float 1e-1
+    loss_weight: 0.5
 
   net_d_iters: 1
   net_d_init_iters: 0
 
+  # Adaptive discriminator training
+  adaptive_d_training: true
+  d_loss_threshold: 0.2  # Adjust based on your typical D loss values
+  d_slow_iters: 20         # Update D every x steps when loss < threshold
+  d_normal_iters: 1       # Normal update frequency
+
 # Uncomment these for validation
 # validation settings
 val:
-   val_freq: 1000
+   val_freq: 500
    save_img: True
 
    metrics:
@@ -174,8 +182,8 @@ val:
 
 # logging settings
 logger:
-  print_freq: 100
-  save_checkpoint_freq: 1000
+  print_freq: 50
+  save_checkpoint_freq: 500
   use_tb_logger: true
   wandb:
     project: ~
