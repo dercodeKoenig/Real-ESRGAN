@@ -186,6 +186,7 @@ val:
      niqe:
          type: calculate_niqe
          crop_border: 4
+         better: lower 
 
 
 # logging settings
