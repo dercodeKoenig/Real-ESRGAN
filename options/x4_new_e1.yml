@@ -179,6 +179,14 @@ val:
        type: calculate_psnr
        crop_border: 4
        test_y_channel: false
+     ssim: 
+       type: calculate_ssim
+       crop_border: 4
+       test_y_channel: false
+     niqe:
+         type: calculate_niqe
+         crop_border: 4
+
 
 # logging settings
 logger:
