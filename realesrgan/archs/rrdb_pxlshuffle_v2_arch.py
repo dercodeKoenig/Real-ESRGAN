@@ -54,8 +54,6 @@ class RRDB(nn.Module):
         self.rdb1 = ResidualDenseBlock(num_feat, num_grow_ch)
         self.rdb2 = ResidualDenseBlock(num_feat, num_grow_ch)
         self.rdb3 = ResidualDenseBlock(num_feat, num_grow_ch)
-
-        self.channel_attention = ChannelAttention(num_feat, num_feat)
         
 
     def forward(self, x):
