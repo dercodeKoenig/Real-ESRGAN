@@ -6,6 +6,20 @@ from basicsr.utils.registry import ARCH_REGISTRY
 from basicsr.archs.arch_util import default_init_weights, make_layer, pixel_unshuffle
 
 
+class ChannelAttention(nn.Module):
+    def __init__(self, num_features, num_features_2):
+        super(ChannelAttention, self).__init__()
+        self.module = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Conv2d(num_features, num_features_2, kernel_size=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(num_features_2, num_features, kernel_size=1),
+            nn.Sigmoid()
+        )
+
+    def forward(self, x):
+        return x * self.module(x)
+
 class ResidualDenseBlock(nn.Module):
     """Residual Dense Block.
 
@@ -65,7 +79,9 @@ class RRDB(nn.Module):
 
         res = out * 0.2 + x
 
-        return res
+        attn = self.channel_attention(res)
+
+        return attn + res
 
 
 @ARCH_REGISTRY.register()

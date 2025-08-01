@@ -1,5 +1,5 @@
 # general settings
-name: train_v3_attn_x4
+name: train_v2_attn_x4_small
 model_type: RealESRGANModel
 scale: 4
 num_gpu: auto  # auto: can infer from your visible devices automatically. official: 4 GPUs
@@ -67,8 +67,8 @@ datasets:
 
     # data loader
     use_shuffle: true
-    num_worker_per_gpu: 4
-    batch_size_per_gpu: 2
+    num_worker_per_gpu: 8
+    batch_size_per_gpu: 8
     dataset_enlarge_ratio: 1
     prefetch_mode: ~
 
@@ -83,20 +83,20 @@ datasets:
 
 # network structures
 network_g:
-  type: RRDBNet_pxlshuffle_v3_attn
+  type: RRDBNet_pxlshuffle_v2_attn
   num_in_ch: 3
   num_out_ch: 3
   num_feat: 64
-  num_block: 12
+  num_block: 8
   num_grow_ch: 32
   scale: 4
-  num_pre_upscale_ch: 128
-  num_final_ch: 24
+  num_pre_upscale_ch: 256
+  #num_final_ch: 24
 
 network_d:
   type: UNetDiscriminatorSN
   num_in_ch: 3
-  num_feat: 128
+  num_feat: 64
   skip_connection: True
 
 # path
@@ -112,12 +112,12 @@ train:
   ema_decay: 0.999
   optim_g:
     type: Adam
-    lr: 0.00005
+    lr: 0.0001
     weight_decay: 0
     betas: [0.9, 0.99]
   optim_d:
     type: Adam
-    lr: 0.00005
+    lr: 0.0001
     weight_decay: 0
     betas: [0.9, 0.99]
 
