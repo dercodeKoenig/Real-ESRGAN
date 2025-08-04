@@ -153,18 +153,18 @@ train:
   # gan loss
   gan_opt:
     type: GANLoss
-    gan_type: lsgan
+    gan_type: vanilla
     real_label_val: 1.0
     fake_label_val: 0.0
-    loss_weight: 0.1
+    loss_weight: 0.5
 
   net_d_iters: 1
   net_d_init_iters: 0
 
   # Adaptive discriminator training
   adaptive_d_training: true
-  d_loss_threshold: 0.1  # Adjust based on your typical D loss values
-  d_slow_iters: 501         # Update D every x steps when loss < threshold
+  d_loss_threshold: 0.2  # Adjust based on your typical D loss values
+  d_slow_iters: 21         # Update D every x steps when loss < threshold
   d_normal_iters: 1       # Normal update frequency
 
 # Uncomment these for validation
