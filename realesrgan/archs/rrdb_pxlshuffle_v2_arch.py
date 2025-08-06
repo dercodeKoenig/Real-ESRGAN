@@ -5,7 +5,6 @@ from torch.nn import functional as F
 from basicsr.utils.registry import ARCH_REGISTRY
 from basicsr.archs.arch_util import default_init_weights, make_layer, pixel_unshuffle
 
-
 class ResidualDenseBlock(nn.Module):
     """Residual Dense Block.
 
@@ -62,7 +61,7 @@ class RRDB(nn.Module):
         out = self.rdb3(out)
 
         res = out * 0.2 + x
-
+        
         return res
 
 
@@ -90,23 +89,24 @@ class RRDBNet_pxlshuffle_v2(nn.Module):
     def __init__(self, num_in_ch, num_out_ch, scale=4, num_feat=64, num_block=23, num_grow_ch=32, num_pre_upscale_ch = 128):
         super(RRDBNet_pxlshuffle_v2, self).__init__()
         self.scale = scale
+        upscale_factor = scale
         if scale == 2:
             num_in_ch = num_in_ch * 4
-            self.scale *= 2
+            upscale_factor = 4
         elif scale == 1:
             num_in_ch = num_in_ch * 16
-            self.scale *= 4
+            upscale_factor = 4
 
-        assert num_pre_upscale_ch % (scale**2) == 0, "num_pre_upscale_ch must be divisible by (scale**2)"
+        assert num_pre_upscale_ch % (upscale_factor**2) == 0, "num_pre_upscale_ch must be divisible by (upscale_factor**2)"
 
         self.conv_first = nn.Conv2d(num_in_ch, num_feat, 3, 1, 1)
         self.body = make_layer(RRDB, num_block, num_feat=num_feat, num_grow_ch=num_grow_ch)
         self.conv_body = nn.Conv2d(num_feat, num_feat, 3, 1, 1)
 
         self.conv_last_1 = nn.Conv2d(num_feat, num_pre_upscale_ch, 3, 1, 1)
-        self.conv_last_2 = nn.Conv2d(int(num_pre_upscale_ch / scale / scale), num_out_ch, 3, 1, 1)
+        self.conv_last_2 = nn.Conv2d(int(num_pre_upscale_ch / upscale_factor / upscale_factor), num_out_ch, 3, 1, 1)
         
-        self.upsampler = nn.PixelShuffle(scale)
+        self.upsampler = nn.PixelShuffle(upscale_factor)
         self.lrelu = nn.LeakyReLU(negative_slope=0.2, inplace=True)
 
     def forward(self, x):
