@@ -292,7 +292,7 @@ class RealESRGANModel(SRGANModel):
                     l_g_total += l_g_gan
                     loss_dict['l_g_gan'] = l_g_gan
                 else:
-                    loss_dict['l_g_gan'] = 0
+                    loss_dict['l_g_gan'] = torch.tensor(0.0, device='cuda')
 
                 self.scaler_g.scale(l_g_total).backward()
                 self.scaler_g.step(self.optimizer_g)
