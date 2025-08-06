@@ -111,22 +111,22 @@ train:
   ema_decay: 0.999
   optim_g:
     type: Adam
-    lr: 0.0002
+    lr: 0.0001
     weight_decay: 0
     betas: [0.9, 0.99]
   optim_d:
     type: Adam
-    lr: 0.0002
+    lr: 0.0001
     weight_decay: 0
     betas: [0.9, 0.99]
 
   scheduler:
       type: MultiStepLR
-      milestones: [20000, 50000, 100000] 
+      milestones: [50000, 100000, 200000] 
       gamma: 0.5     
 
   total_iter: 2000000
-  warmup_iter: -1  # no warm up
+  warmup_iter: 20000
 
 
   # losses
@@ -158,14 +158,16 @@ train:
     fake_label_val: 0.0
     loss_weight: 0.5
 
-  net_d_iters: 1
-  net_d_init_iters: 0
+  
+  net_g_init_iters: 10000 # wait x iters before start updating d. gan loss is disabled for g during warmup
+  net_d_init_iters: 0 # wait x iters before start updating g
 
   # Adaptive discriminator training
   adaptive_d_training: true
-  d_loss_threshold: 0.5  # Adjust based on your typical D loss values
-  d_slow_iters: 101         # Update D every x steps when loss < threshold
-  d_normal_iters: 1       # Normal update frequency
+  d_loss_threshold: 0.5   # Adjust based on your typical D loss values
+  d_slow_iters: 101        # Update D every x steps when loss < threshold
+  d_normal_iters: 1       # update d if steps % d_normal_iters == 0
+  net_d_iters: 1          # g updates if current_iter % net_d_iters == 0 
 
 # Uncomment these for validation
 # validation settings
