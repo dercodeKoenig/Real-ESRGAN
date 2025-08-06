@@ -12,7 +12,7 @@ class ChannelAttention(nn.Module):
         self.module = nn.Sequential(
             nn.AdaptiveAvgPool2d(1),
             nn.Conv2d(num_features, num_features_2, kernel_size=1),
-            nn.ReLU(inplace=True),
+            nn.LeakyReLU(negative_slope=0.01, inplace=True),
             nn.Conv2d(num_features_2, num_features, kernel_size=1),
             nn.Sigmoid()
         )
