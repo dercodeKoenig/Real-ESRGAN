@@ -159,8 +159,8 @@ train:
     loss_weight: 0.5
 
   
-  net_g_init_iters: 10000 # wait x iters before start updating d. gan loss is disabled for g during warmup
-  net_d_init_iters: 0 # wait x iters before start updating g
+  net_g_init_iters: 10000    # wait x iters before start updating d. gan loss is disabled for g during warmup
+  net_d_init_iters: 0        # wait x iters before start updating g
   percept_warmup_iters: 5000 # wait x iters before adding perceptual loss
 
   # Adaptive discriminator training
