@@ -41,6 +41,7 @@ class RealESRGANModel(SRGANModel):
         self.d_normal_iters = opt['train'].get('d_normal_iters', 1)  # Normal D update frequency
 
         self.net_g_init_iters = opt['train'].get('net_g_init_iters', 0)  # warmup steps for g before d starts training
+        self.percept_warmup_iters = opt['train'].get('percept_warmup_iters', 0)  # warmup steps before adding vgg loss
         
         # Track discriminator update counter and cached values
         self.d_update_counter = 0
@@ -277,7 +278,7 @@ class RealESRGANModel(SRGANModel):
                     l_g_total += l_g_ldl
                     loss_dict['l_g_ldl'] = l_g_ldl
                 # perceptual loss
-                if self.cri_perceptual:
+                if self.cri_perceptual and current_iter > self.percept_warmup_iters:
                     l_g_percep, l_g_style = self.cri_perceptual(self.output, percep_gt)
                     if l_g_percep is not None:
                         l_g_total += l_g_percep
