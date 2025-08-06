@@ -39,6 +39,8 @@ class RealESRGANModel(SRGANModel):
         self.d_loss_threshold = opt['train'].get('d_loss_threshold', 0.01)  # When D loss < this, slow down D updates
         self.d_slow_iters = opt['train'].get('d_slow_iters', 5)  # Update D every 5 steps when loss is low
         self.d_normal_iters = opt['train'].get('d_normal_iters', 1)  # Normal D update frequency
+
+        self.net_g_init_iters = opt['train'].get('net_g_init_iters', 0)  # warmup steps for g before d starts training
         
         # Track discriminator update counter and cached values
         self.d_update_counter = 0
@@ -222,10 +224,10 @@ class RealESRGANModel(SRGANModel):
         """Determine if discriminator should be updated based on adaptive strategy using cached loss."""
         if not self.adaptive_d_training:
             # Use original logic - update D every iteration after init period
-            return current_iter > self.net_d_init_iters
+            return current_iter > self.net_g_init_iters
         
         # Always skip during initial discriminator training period
-        if current_iter <= self.net_d_init_iters:
+        if current_iter <= self.net_g_init_iters:
             return False
             
         # Adaptive strategy based on cached discriminator loss from previous iteration
