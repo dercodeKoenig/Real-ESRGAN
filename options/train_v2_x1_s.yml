@@ -122,7 +122,7 @@ train:
 
   scheduler:
       type: MultiStepLR
-      milestones: [100000, 200000, 400000] 
+      milestones: [500000] 
       gamma: 0.5     
 
   total_iter: 2000000
@@ -132,7 +132,7 @@ train:
   # losses
   pixel_opt:
     type: L1Loss
-    loss_weight: 0.1
+    loss_weight: 1.0
     reduction: mean
   # perceptual loss (content and style losses)
   perceptual_opt:
@@ -156,7 +156,7 @@ train:
     gan_type: vanilla
     real_label_val: 1.0
     fake_label_val: 0.0
-    loss_weight: 1.0
+    loss_weight: 0.2
 
   
   net_g_init_iters: 10000    # wait x iters before start updating d. gan loss is disabled for g during warmup
