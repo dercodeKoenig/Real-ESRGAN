@@ -103,7 +103,12 @@ class RealESRGANDataset(data.Dataset):
                 break
             finally:
                 retry -= 1
-        img_gt = imfrombytes(img_bytes, float32=True)
+
+        try:
+            img_gt = imfrombytes(img_bytes, float32=True)
+        except Exception as e:
+            print("error image:", gt_path)
+            raise e
 
         # -------------------- Do augmentation for training: flip, rotation -------------------- #
         img_gt = augment(img_gt, self.opt['use_hflip'], self.opt['use_rot'])
