@@ -1,5 +1,5 @@
 # general settings
-name: train_v2_x4_s
+name: train_v2_x4_m
 model_type: RealESRGANModel
 scale: 4
 num_gpu: auto  # auto: can infer from your visible devices automatically. official: 4 GPUs
@@ -31,7 +31,7 @@ gray_noise_prob2: 0.4
 jpeg_range2: [30, 95]
 
 gt_size: 512
-queue_size: 16
+queue_size: 18
 
 # dataset and data loader settings
 datasets:
@@ -68,7 +68,7 @@ datasets:
     # data loader
     use_shuffle: true
     num_worker_per_gpu: 8
-    batch_size_per_gpu: 8
+    batch_size_per_gpu: 6
     dataset_enlarge_ratio: 1
     prefetch_mode: ~
 
@@ -87,7 +87,7 @@ network_g:
   num_in_ch: 3
   num_out_ch: 3
   num_feat: 64
-  num_block: 16
+  num_block: 32
   num_grow_ch: 32
   scale: 4
   num_pre_upscale_ch: 256
@@ -108,7 +108,7 @@ path:
 
 # training settings
 train:
-  ema_decay: 0.999
+  ema_decay: 0.0
   optim_g:
     type: Adam
     lr: 0.0001
