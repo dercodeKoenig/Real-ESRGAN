@@ -25,6 +25,11 @@ class RealESRGANModel(SRGANModel):
 
     def __init__(self, opt):
         super(RealESRGANModel, self).__init__(opt)
+        
+        self.net_g.compile(mode="max-autotune", dynamic=False)
+        self.net_d.compile(mode="max-autotune", dynamic=False)
+        print("use compile")
+        
         self.jpeger = DiffJPEG(differentiable=False).cuda()  # simulate JPEG compression artifacts
         self.usm_sharpener = USMSharp().cuda()  # do usm sharpening
         self.queue_size = opt.get('queue_size', 180)
