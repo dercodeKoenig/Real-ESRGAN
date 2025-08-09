@@ -27,7 +27,9 @@ class RealESRGANModel(SRGANModel):
         super(RealESRGANModel, self).__init__(opt)
         
         self.net_g.compile(mode="max-autotune", dynamic=False)
-        self.net_d.compile(mode="max-autotune", dynamic=False)
+        #self.net_d.compile(mode="max-autotune", dynamic=False)
+        #self.net_g.compile(dynamic=False)
+        self.net_d.compile(dynamic=False)
         print("use compile")
         
         self.jpeger = DiffJPEG(differentiable=False).cuda()  # simulate JPEG compression artifacts
@@ -263,6 +265,7 @@ class RealESRGANModel(SRGANModel):
         self.optimizer_g.zero_grad()
         
         with autocast('cuda'):
+            torch.compiler.cudagraph_mark_step_begin() 
             self.output = self.net_g(self.lq)
             if self.cri_ldl:
                 self.output_ema = self.net_g_ema(self.lq)
@@ -304,6 +307,10 @@ class RealESRGANModel(SRGANModel):
                 self.scaler_g.step(self.optimizer_g)
                 self.scaler_g.update()
 
+        # Clone output tensor outside of compiled regions to avoid CUDA graph issues
+        output_for_d = self.output.clone().detach()
+        gan_gt_for_d = gan_gt.clone()
+
         # optimize net_d with adaptive strategy
         for p in self.net_d.parameters():
             p.requires_grad = True
@@ -315,17 +322,19 @@ class RealESRGANModel(SRGANModel):
         if should_update_d:
             self.optimizer_d.zero_grad()
             
+            # Process real samples
             with autocast('cuda'):
-                # real
-                real_d_pred = self.net_d(gan_gt)
+                torch.compiler.cudagraph_mark_step_begin() 
+                real_d_pred = self.net_d(gan_gt_for_d)
                 l_d_real = self.cri_gan(real_d_pred, True, is_disc=True)
                 out_d_real = torch.mean(real_d_pred.detach())
             
             self.scaler_d.scale(l_d_real).backward()
             
+            # Process fake samples  
             with autocast('cuda'):
-                # fake
-                fake_d_pred = self.net_d(self.output.detach().clone())
+                torch.compiler.cudagraph_mark_step_begin() 
+                fake_d_pred = self.net_d(output_for_d)
                 l_d_fake = self.cri_gan(fake_d_pred, False, is_disc=True)
                 out_d_fake = torch.mean(fake_d_pred.detach())
             
