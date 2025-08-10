@@ -76,12 +76,12 @@ class RRDB(nn.Module):
         out = self.rdb1(x)
         out = self.rdb2(out)
         out = self.rdb3(out)
-
-        res = out * 0.2 + x
-
-        attn = self.channel_attention(res)
-
-        return attn + res
+        
+        # Apply channel attention to the processed features
+        out = self.channel_attention(out)
+        
+        # Then add the residual connection with scaling
+        return out * 0.2 + x
 
 
 @ARCH_REGISTRY.register()
