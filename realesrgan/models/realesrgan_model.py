@@ -13,6 +13,10 @@ from basicsr.utils import DiffJPEG, USMSharp
 from basicsr.utils.img_process_util import filter2D
 from basicsr.utils.registry import MODEL_REGISTRY
 
+#idk claude says it is faster
+torch.backends.cudnn.benchmark = True
+torch.backends.cuda.matmul.allow_tf32 = True
+
 
 @MODEL_REGISTRY.register()
 class RealESRGANModel(SRGANModel):
@@ -26,18 +30,16 @@ class RealESRGANModel(SRGANModel):
     def __init__(self, opt):
         super(RealESRGANModel, self).__init__(opt)
         
-        self.net_g.compile(mode="max-autotune", dynamic=False)
-        #self.net_d.compile(mode="max-autotune", dynamic=False)
+        self.net_g.compile(mode="max-autotune", dynamic=False, fullgraph =True)
+        #self.net_d.compile(mode="max-autotune", dynamic=False, fullgraph =True)
         #self.net_g.compile(dynamic=False)
-        self.net_d.compile(dynamic=False)
-        print("use compile")
+        self.net_d.compile(dynamic=False) # i use this bc autotune needs me to reduce batch size from 8 to 7
         
         self.jpeger = DiffJPEG(differentiable=False).cuda()  # simulate JPEG compression artifacts
         self.usm_sharpener = USMSharp().cuda()  # do usm sharpening
         self.queue_size = opt.get('queue_size', 180)
         
         # Initialize AMP components
-        print("AMP enabled")
         self.scaler_g = GradScaler()
         self.scaler_d = GradScaler()
         
@@ -263,13 +265,12 @@ class RealESRGANModel(SRGANModel):
             p.requires_grad = False
 
         self.optimizer_g.zero_grad()
-        
+
         with autocast('cuda'):
-            torch.compiler.cudagraph_mark_step_begin() 
             self.output = self.net_g(self.lq)
             if self.cri_ldl:
                 self.output_ema = self.net_g_ema(self.lq)
-
+        
             l_g_total = 0
             loss_dict = OrderedDict()
             
@@ -282,7 +283,10 @@ class RealESRGANModel(SRGANModel):
                     loss_dict['l_g_pix'] = l_g_pix
                 if self.cri_ldl:
                     pixel_weight = get_refined_artifact_map(self.gt, self.output, self.output_ema, 7)
-                    l_g_ldl = self.cri_ldl(torch.mul(pixel_weight, self.output), torch.mul(pixel_weight, self.gt))
+                    l_g_ldl = self.cri_ldl(
+                        torch.mul(pixel_weight, self.output),
+                        torch.mul(pixel_weight, self.gt)
+                    )
                     l_g_total += l_g_ldl
                     loss_dict['l_g_ldl'] = l_g_ldl
                 # perceptual loss
@@ -302,14 +306,16 @@ class RealESRGANModel(SRGANModel):
                     loss_dict['l_g_gan'] = l_g_gan
                 else:
                     loss_dict['l_g_gan'] = torch.tensor(0.0, device='cuda')
+        
+        # Backward pass & optimizer step outside autocast
+        if current_iter % self.net_d_iters == 0 and current_iter > self.net_d_init_iters:
+            self.scaler_g.scale(l_g_total).backward()
+            self.scaler_g.step(self.optimizer_g)
+            self.scaler_g.update()
 
-                self.scaler_g.scale(l_g_total).backward()
-                self.scaler_g.step(self.optimizer_g)
-                self.scaler_g.update()
 
         # Clone output tensor outside of compiled regions to avoid CUDA graph issues
         output_for_d = self.output.clone().detach()
-        gan_gt_for_d = gan_gt.clone()
 
         # optimize net_d with adaptive strategy
         for p in self.net_d.parameters():
@@ -324,21 +330,18 @@ class RealESRGANModel(SRGANModel):
             
             # Process real samples
             with autocast('cuda'):
-                torch.compiler.cudagraph_mark_step_begin() 
-                real_d_pred = self.net_d(gan_gt_for_d)
-                l_d_real = self.cri_gan(real_d_pred, True, is_disc=True)
-                out_d_real = torch.mean(real_d_pred.detach())
-            
-            self.scaler_d.scale(l_d_real).backward()
-            
-            # Process fake samples  
-            with autocast('cuda'):
-                torch.compiler.cudagraph_mark_step_begin() 
+                real_d_pred = self.net_d(gan_gt)
                 fake_d_pred = self.net_d(output_for_d)
+                
+                l_d_real = self.cri_gan(real_d_pred, True, is_disc=True)
                 l_d_fake = self.cri_gan(fake_d_pred, False, is_disc=True)
-                out_d_fake = torch.mean(fake_d_pred.detach())
-            
+
+            self.scaler_d.scale(l_d_real).backward()
             self.scaler_d.scale(l_d_fake).backward()
+
+            out_d_real = torch.mean(real_d_pred.detach())
+            out_d_fake = torch.mean(fake_d_pred.detach())
+            
             self.scaler_d.step(self.optimizer_d)
             self.scaler_d.update()
             
