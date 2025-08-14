@@ -87,10 +87,10 @@ if __name__ == '__main__':
         description='Real-ESRGAN aims at developing Practical Algorithms for General Image Restoration',
         long_description=readme(),
         long_description_content_type='text/markdown',
-        author='Xintao Wang',
-        author_email='xintao.wang@outlook.com',
+        author='',
+        author_email='',
         keywords='computer vision, pytorch, image restoration, super-resolution, esrgan, real-esrgan',
-        url='https://github.com/xinntao/Real-ESRGAN',
+        url='https://github.com/dercodeKoenig/Real-ESRGAN',
         include_package_data=True,
         packages=find_packages(exclude=('options', 'datasets', 'experiments', 'results', 'tb_logger', 'wandb')),
         classifiers=[
