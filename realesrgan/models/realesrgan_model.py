@@ -336,21 +336,26 @@ class RealESRGANModel(SRGANModel):
                 l_d_real = self.cri_gan(real_d_pred, True, is_disc=True)
                 l_d_fake = self.cri_gan(fake_d_pred, False, is_disc=True)
 
-            self.scaler_d.scale(l_d_real).backward()
-            self.scaler_d.scale(l_d_fake).backward()
-
-            out_d_real = torch.mean(real_d_pred.detach())
-            out_d_fake = torch.mean(fake_d_pred.detach())
-            
-            self.scaler_d.step(self.optimizer_d)
-            self.scaler_d.update()
-            
-            # Cache tensor values (not converted to float) and the total loss value for threshold comparison
-            self.cached_d_loss_value = (l_d_real + l_d_fake).item()  # For threshold comparison
-            self.cached_d_real = l_d_real.detach()  # Keep as tensor
-            self.cached_d_fake = l_d_fake.detach()  # Keep as tensor
-            self.cached_out_d_real = out_d_real  # Keep as tensor
-            self.cached_out_d_fake = out_d_fake  # Keep as tensor
+            d_total_loss = (l_d_real + l_d_fake).item()
+        
+            # New safeguard: skip discriminator update if loss is too low ( i had d loss go to 0 once so i will add this here )
+            if d_total_loss < self.d_loss_threshold * 0.5:
+                should_update_d = False  # override
+            else:
+                self.scaler_d.scale(l_d_real).backward()
+                self.scaler_d.scale(l_d_fake).backward()
+                self.scaler_d.step(self.optimizer_d)
+                self.scaler_d.update()
+        
+                out_d_real = torch.mean(real_d_pred.detach())
+                out_d_fake = torch.mean(fake_d_pred.detach())
+        
+                # cache
+                self.cached_d_loss_value = d_total_loss
+                self.cached_d_real = l_d_real.detach()
+                self.cached_d_fake = l_d_fake.detach()
+                self.cached_out_d_real = out_d_real
+                self.cached_out_d_fake = out_d_fake
         
         # Always assign from cache (whether we just updated it or using old values)
         loss_dict['l_d_real'] = self.cached_d_real
