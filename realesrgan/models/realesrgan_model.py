@@ -347,15 +347,15 @@ class RealESRGANModel(SRGANModel):
                 self.scaler_d.step(self.optimizer_d)
                 self.scaler_d.update()
         
-                out_d_real = torch.mean(real_d_pred.detach())
-                out_d_fake = torch.mean(fake_d_pred.detach())
+            out_d_real = torch.mean(real_d_pred.detach())
+            out_d_fake = torch.mean(fake_d_pred.detach())
         
                 # cache
-                self.cached_d_loss_value = d_total_loss
-                self.cached_d_real = l_d_real.detach()
-                self.cached_d_fake = l_d_fake.detach()
-                self.cached_out_d_real = out_d_real
-                self.cached_out_d_fake = out_d_fake
+            self.cached_d_loss_value = d_total_loss
+            self.cached_d_real = l_d_real.detach()
+            self.cached_d_fake = l_d_fake.detach()
+            self.cached_out_d_real = out_d_real
+            self.cached_out_d_fake = out_d_fake
         
         # Always assign from cache (whether we just updated it or using old values)
         loss_dict['l_d_real'] = self.cached_d_real
