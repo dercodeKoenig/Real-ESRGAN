@@ -344,6 +344,10 @@ class RealESRGANModel(SRGANModel):
             else:
                 self.scaler_d.scale(l_d_real).backward()
                 self.scaler_d.scale(l_d_fake).backward()
+                 
+                self.scaler_d.unscale_(self.optimizer_d)
+                torch.nn.utils.clip_grad_norm_(self.net_d.parameters(), max_norm=1.0)
+                
                 self.scaler_d.step(self.optimizer_d)
                 self.scaler_d.update()
         
