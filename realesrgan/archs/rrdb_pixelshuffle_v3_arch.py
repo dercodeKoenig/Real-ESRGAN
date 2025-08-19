@@ -70,7 +70,7 @@ class HighwayRRDB(nn.Module):
         
         # Channel attention on highway features
         if self.use_attention:
-            self.channel_attention = ChannelAttention(highway_channels)
+            self.channel_attention = ChannelAttention(highway_channels, highway_channels // 2)
         
         self.lrelu = nn.LeakyReLU(negative_slope=0.2, inplace=True)
 
