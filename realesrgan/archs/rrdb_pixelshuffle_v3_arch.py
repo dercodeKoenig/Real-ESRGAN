@@ -92,8 +92,16 @@ class HighwayRRDB(nn.Module):
         # Apply channel attention
         if self.use_attention:
             expanded = self.channel_attention(expanded)
-        
-        return highway_features + expanded * 0.2
+
+        if torch.is_grad_enabled():
+            # Training: keep safe for autograd
+            return highway_features + expanded * 0.2
+        else:
+            # Inference: do it in-place to save VRAM, very important for processing large images!
+            expanded.mul_(0.2)
+            highway_features.add_(expanded)
+            return highway_features
+
 
 
 @ARCH_REGISTRY.register()
