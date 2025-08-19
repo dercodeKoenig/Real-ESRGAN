@@ -7,28 +7,22 @@ from basicsr.archs.arch_util import default_init_weights, make_layer, pixel_unsh
 
 
 class ChannelAttention(nn.Module):
-    def __init__(self, num_features, num_features_2):
+    def __init__(self, num_features, hidden_features):
         super(ChannelAttention, self).__init__()
+            
         self.module = nn.Sequential(
             nn.AdaptiveAvgPool2d(1),
-            nn.Conv2d(num_features, num_features_2, kernel_size=1),
+            nn.Conv2d(num_features, hidden_features, kernel_size=1),
             nn.LeakyReLU(negative_slope=0.01, inplace=True),
-            nn.Conv2d(num_features_2, num_features, kernel_size=1),
+            nn.Conv2d(hidden_features, num_features, kernel_size=1),
             nn.Sigmoid()
         )
 
     def forward(self, x):
         return x * self.module(x)
 
+
 class ResidualDenseBlock(nn.Module):
-    """Residual Dense Block.
-
-    Used in RRDB block in ESRGAN.
-
-    Args:
-        num_feat (int): Channel number of intermediate features.
-        num_grow_ch (int): Channels for each growth.
-    """
 
     def __init__(self, num_feat=64, num_grow_ch=32):
         super(ResidualDenseBlock, self).__init__()
@@ -49,65 +43,85 @@ class ResidualDenseBlock(nn.Module):
         x3 = self.lrelu(self.conv3(torch.cat((x, x1, x2), 1)))
         x4 = self.lrelu(self.conv4(torch.cat((x, x1, x2, x3), 1)))
         x5 = self.conv5(torch.cat((x, x1, x2, x3, x4), 1))
-        # Empirically, we use 0.2 to scale the residual for better performance
         return x5 * 0.2 + x
 
 
-class RRDB(nn.Module):
-    """Residual in Residual Dense Block.
+class HighwayRRDB(nn.Module):
+    """Highway RRDB Block with feature compression/expansion."""
 
-    Used in RRDB-Net in ESRGAN.
-
-    Args:
-        num_feat (int): Channel number of intermediate features.
-        num_grow_ch (int): Channels for each growth.
-    """
-
-    def __init__(self, num_feat, num_grow_ch=32):
-        super(RRDB, self).__init__()
-        self.rdb1 = ResidualDenseBlock(num_feat, num_grow_ch)
-        self.rdb2 = ResidualDenseBlock(num_feat, num_grow_ch)
-        self.rdb3 = ResidualDenseBlock(num_feat, num_grow_ch)
-
-        self.channel_attention = ChannelAttention(num_feat, num_feat)
+    def __init__(self, highway_channels, processing_channels=64, num_grow_ch=32, use_attention=True):
+        super(HighwayRRDB, self).__init__()
+        self.highway_channels = highway_channels
+        self.processing_channels = processing_channels
+        self.use_attention = use_attention
         
+        # Compression: Highway → Processing
+        self.compress = nn.Conv2d(highway_channels, processing_channels, kernel_size=1)
+        
+        # Dense processing blocks
+        self.rdb1 = ResidualDenseBlock(processing_channels, num_grow_ch)
+        self.rdb2 = ResidualDenseBlock(processing_channels, num_grow_ch)
+        self.rdb3 = ResidualDenseBlock(processing_channels, num_grow_ch)
+        
+        # Expansion: Processing → Highway
+        # Using 3x3 for spatial-aware mixing before expansion
+        self.pre_expand = nn.Conv2d(processing_channels, processing_channels, kernel_size=3, padding=1)
+        self.expand = nn.Conv2d(processing_channels, highway_channels, kernel_size=1)
+        
+        # Channel attention on highway features
+        if self.use_attention:
+            self.channel_attention = ChannelAttention(highway_channels)
+        
+        self.lrelu = nn.LeakyReLU(negative_slope=0.2, inplace=True)
 
-    def forward(self, x):
-        out = self.rdb1(x)
-        out = self.rdb2(out)
-        out = self.rdb3(out)
+    def forward(self, highway_features):
+        # Compress highway features for processing
+        compressed = self.lrelu(self.compress(highway_features))
         
-        # Apply channel attention to the processed features
-        out = self.channel_attention(out)
+        # Dense processing
+        processed = self.rdb1(compressed)
+        processed = self.rdb2(processed)
+        processed = self.rdb3(processed)
         
-        # Then add the residual connection with scaling
-        return out * 0.2 + x
+        # Spatial-aware pre-expansion
+        processed = self.lrelu(self.pre_expand(processed))
+        
+        # Expand back to highway size
+        expanded = self.expand(processed)
+        
+        # Apply channel attention
+        if self.use_attention:
+            expanded = self.channel_attention(expanded)
+        
+        return highway_features + expanded * 0.2
 
 
 @ARCH_REGISTRY.register()
-class RRDBNet_pxlshuffle_v2_attn(nn.Module):
-    """Networks consisting of Residual in Residual Dense Block, which is used
-    in ESRGAN.
-
-    ESRGAN: Enhanced Super-Resolution Generative Adversarial Networks.
-
-    We extend ESRGAN for scale x2 and scale x1.
-    Note: This is one option for scale 1, scale 2 in RRDBNet.
-    We first employ the pixel-unshuffle (an inverse operation of pixelshuffle to reduce the spatial size
-    and enlarge the channel size before feeding inputs into the main ESRGAN architecture.
-
+class RRDBNet_v3(nn.Module):
+    """Highway RRDB Network with feature highway architecture.
+    
+    Main innovation: Each block processes features in a compact space (64 channels)
+    while maintaining a rich feature highway (256-512 channels) throughout the network.
+    
     Args:
         num_in_ch (int): Channel number of inputs.
         num_out_ch (int): Channel number of outputs.
-        num_feat (int): Channel number of intermediate features.
-            Default: 64
-        num_block (int): Block number in the trunk network. Defaults: 23
-        num_grow_ch (int): Channels for each growth. Default: 32.
+        scale (int): Upsampling scale factor.
+        highway_channels (int): Channel number for feature highway.
+        processing_channels (int): Channel number for dense block processing.
+        num_block (int): Number of RRDB blocks.
+        num_grow_ch (int): Growth channels for dense blocks.
+        use_attention (bool): Whether to use channel attention.
     """
 
-    def __init__(self, num_in_ch, num_out_ch, scale=4, num_feat=64, num_block=23, num_grow_ch=32, num_pre_upscale_ch = 128):
-        super(RRDBNet_pxlshuffle_v2_attn, self).__init__()
+    def __init__(self, num_in_ch, num_out_ch, scale=4, highway_channels=256, 
+                 processing_channels=64, num_block=23, num_grow_ch=32, num_pre_upscale_ch=128,
+                 use_attention=True):
+        super(RRDBNet_v3, self).__init__()
         self.scale = scale
+        self.highway_channels = highway_channels
+        
+        # Handle different scales with pixel unshuffle
         upscale_factor = scale
         if scale == 2:
             num_in_ch = num_in_ch * 4
@@ -117,36 +131,51 @@ class RRDBNet_pxlshuffle_v2_attn(nn.Module):
             upscale_factor = 4
 
         assert num_pre_upscale_ch % (upscale_factor**2) == 0, "num_pre_upscale_ch must be divisible by (upscale_factor**2)"
+        
+        # Initial feature extraction
+        self.conv_first = nn.Conv2d(num_in_ch, highway_channels, 3, 1, 1)
+   
+        # Highway RRDB blocks
+        self.highway_blocks = nn.ModuleList([
+            HighwayRRDB(
+                highway_channels=highway_channels,
+                processing_channels=processing_channels,
+                num_grow_ch=num_grow_ch,
+                use_attention=use_attention
+            ) for _ in range(num_block)
+        ])
 
-        self.conv_first = nn.Conv2d(num_in_ch, num_feat, 3, 1, 1)
-        self.body = make_layer(RRDB, num_block, num_feat=num_feat, num_grow_ch=num_grow_ch)
-        self.conv_body = nn.Conv2d(num_feat, num_feat, 3, 1, 1)
-
-        self.conv_last_1 = nn.Conv2d(num_feat, num_pre_upscale_ch, 3, 1, 1)
+        # Final processing and upsampling
+        self.conv_last_0 = nn.Conv2d(highway_channels, highway_channels, 3, 1, 1)
+        self.conv_last_1 = nn.Conv2d(highway_channels, num_pre_upscale_ch, 3, 1, 1)
         self.conv_last_2 = nn.Conv2d(int(num_pre_upscale_ch / upscale_factor / upscale_factor), num_out_ch, 3, 1, 1)
         
         self.upsampler = nn.PixelShuffle(upscale_factor)
         self.lrelu = nn.LeakyReLU(negative_slope=0.2, inplace=True)
 
     def forward(self, x):
+        # Handle different scales
         if self.scale == 2:
             feat = pixel_unshuffle(x, scale=2)
         elif self.scale == 1:
             feat = pixel_unshuffle(x, scale=4)
         else:
             feat = x
-        feat = self.conv_first(feat)
-
-        feat = self.body(feat)
-
-        feat = self.conv_body(feat)
+            
+        # Initial feature extraction
+        highway_feat = self.conv_first(feat)
+        
+        # Process through highway blocks
+        for highway_block in self.highway_blocks:
+            highway_feat = highway_block(highway_feat)
+        
+        
+        highway_feat = self.conv_last_0(highway_feat)
+        highway_feat = self.lrelu(highway_feat)
+        
+        feat = self.conv_last_1(highway_feat)
         feat = self.lrelu(feat)
-
-        feat = self.conv_last_1(feat)
-        feat = self.lrelu(feat)
-
         feat = self.upsampler(feat)
-
         feat = self.conv_last_2(feat)
 
         return feat
