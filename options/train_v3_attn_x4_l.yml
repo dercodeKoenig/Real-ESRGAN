@@ -1,6 +1,6 @@
 # general settings
-name: train_v3_attn_x4_s_2
-model_type: RealESRGANModel2
+name: train_v3_attn_x4_l
+model_type: RealESRGANModel
 scale: 4
 num_gpu: auto  # auto: can infer from your visible devices automatically. official: 4 GPUs
 manual_seed: 0
@@ -31,7 +31,7 @@ gray_noise_prob2: 0.4
 jpeg_range2: [30, 95]
 
 gt_size: 512
-queue_size: 64
+queue_size: 60
 
 # dataset and data loader settings
 datasets:
@@ -68,7 +68,7 @@ datasets:
     # data loader
     use_shuffle: true
     num_worker_per_gpu: 1
-    batch_size_per_gpu: 1
+    batch_size_per_gpu: 3
     dataset_enlarge_ratio: 1
     prefetch_mode: ~
 
@@ -86,18 +86,18 @@ network_g:
   type: RRDBNet_v3
   num_in_ch: 3
   num_out_ch: 3
-  highway_channels: 64
-  processing_channels: 32
-  num_block: 4
-  num_grow_ch: 32
-  num_pre_upscale_ch: 128
+  highway_channels: 512
+  processing_channels: 128
+  num_block: 32
+  num_grow_ch: 64
+  num_pre_upscale_ch: 256
   scale: 4
   use_attention: true
 
 network_d:
   type: UNetDiscriminatorSN
   num_in_ch: 3
-  num_feat: 32
+  num_feat: 128
   skip_connection: True
 
 # path
@@ -128,9 +128,7 @@ train:
 
   total_iter: 1000000
   warmup_iter: 20000
-  gradient_accumulation_steps: 256
-  gan_warmup_iters: 10000
-  percept_warmup_iters: 5000
+
 
   # losses
   pixel_opt:
@@ -162,10 +160,21 @@ train:
     loss_weight: 1.0
 
   
+  net_g_init_iters: 100    # wait x iters before start updating d. gan loss is disabled for g during warmup
+  net_d_init_iters: 0        # wait x iters before start updating g
+  percept_warmup_iters: 50 # wait x iters before adding perceptual loss
 
+  # Adaptive discriminator training
+  adaptive_d_training: true
+  d_loss_threshold: 0.6   # Adjust based on your typical D loss values
+  d_slow_iters: 11        # Update D every x steps when loss < threshold ( it will still skip the update if total loss is < 50% of the threshold )
+  d_normal_iters: 1       # update d if steps % d_normal_iters == 0
+  net_d_iters: 1          # g updates if current_iter % net_d_iters == 0 
 
+# Uncomment these for validation
+# validation settings
 val:
-   val_freq: 50
+   val_freq: 500
    save_img: True
 
    metrics:
