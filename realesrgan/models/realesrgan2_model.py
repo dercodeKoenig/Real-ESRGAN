@@ -30,10 +30,10 @@ class RealESRGANModel2(SRGANModel):
     def __init__(self, opt):
         super(RealESRGANModel2, self).__init__(opt)
 
-        #self.net_g.compile(mode="max-autotune", dynamic=False, fullgraph=True)
-        #self.net_d.compile(mode="max-autotune", dynamic=False, fullgraph=True)
+        self.net_g.compile(mode="max-autotune", dynamic=False, fullgraph=True)
+        self.net_d.compile(mode="max-autotune", dynamic=False, fullgraph=True)
         #self.net_g.compile(dynamic=False, fullgraph=True)
-        #self.net_d.compile(dynamic=False, fullgraph=True)  # i use this bc autotune needs me to reduce batch size from 8 to 7
+        #self.net_d.compile(dynamic=False, fullgraph=True)
 
         self.jpeger = DiffJPEG(differentiable=False).cuda()  # simulate JPEG compression artifacts
         self.usm_sharpener = USMSharp().cuda()  # do usm sharpening
