@@ -88,7 +88,7 @@ network_g:
   num_out_ch: 3
   highway_channels: 64
   processing_channels: 32
-  num_block: 8
+  num_block: 4
   num_grow_ch: 32
   num_pre_upscale_ch: 128
   scale: 4
