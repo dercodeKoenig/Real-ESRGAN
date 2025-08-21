@@ -128,6 +128,8 @@ train:
 
   total_iter: 1000000
   warmup_iter: 20000
+  gan_warmup_iters: 100000
+  percept_warmup_iters: 5000
 
 
   # losses
@@ -159,17 +161,10 @@ train:
     fake_label_val: 0.0
     loss_weight: 1.0
 
-  
-  net_g_init_iters: 100000    # wait x iters before start updating d. gan loss is disabled for g during warmup
-  net_d_init_iters: 0        # wait x iters before start updating g
-  percept_warmup_iters: 5000 # wait x iters before adding perceptual loss
-
   # Adaptive discriminator training
-  adaptive_d_training: true
   d_loss_threshold: 0.6   # Adjust based on your typical D loss values
   d_slow_iters: 11        # Update D every x steps when loss < threshold ( it will still skip the update if total loss is < 50% of the threshold )
   d_normal_iters: 1       # update d if steps % d_normal_iters == 0
-  net_d_iters: 1          # g updates if current_iter % net_d_iters == 0 
 
 # Uncomment these for validation
 # validation settings
