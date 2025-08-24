@@ -69,8 +69,8 @@ class RealESRGANer():
             keyname = 'params'
         model.load_state_dict(loadnet[keyname], strict=True)
 
-        model.eval()
-        self.model = model.to(self.device)
+        self.model = model
+        self.model.eval()
         if self.half:
             self.model = self.model.half()
 
@@ -217,6 +217,8 @@ class RealESRGANer():
 
         # ------------------- process image (without the alpha channel) ------------------- #
         self.pre_process(img)
+
+        self.model.to(self.device)
         if self.tile_size > 0:
             self.tile_process()
         else:
@@ -253,6 +255,8 @@ class RealESRGANer():
         else:
             output = (output_img * 255.0).round().astype(np.uint8)
 
+        self.model.to("cpu")
+
         if outscale is not None and outscale != float(self.scale):
             output = cv2.resize(
                 output, (
@@ -261,6 +265,211 @@ class RealESRGANer():
                 ), interpolation=cv2.INTER_LANCZOS4)
 
         return output, img_mode
+
+
+def find_best_resolution(w, h, resolutions):
+    """
+    Find the smallest resolution from the list that can fit the input dimensions.
+    Returns (target_w, target_h) and the padding needed.
+    """
+    for target_w, target_h in sorted(resolutions, key=lambda x: x[0] * x[1]):
+        if w <= target_w and h <= target_h:
+            # Calculate padding needed (equally distributed on all sides)
+            pad_w = target_w - w
+            pad_h = target_h - h
+
+            # Distribute padding equally, with extra pixel going to right/bottom if odd
+            pad_left = pad_w // 2
+            pad_right = pad_w - pad_left
+            pad_top = pad_h // 2
+            pad_bottom = pad_h - pad_top
+
+            return (target_w, target_h), (pad_left, pad_right, pad_top, pad_bottom)
+
+    return None
+
+
+class RealESRGANerV2():
+
+    def __init__(self,
+                 scale,
+                 model_path,
+                 model,
+                 compiled_model = None,
+                 compile_res_min = float("inf"),
+                 allowed_compile_resolutions = None,
+                 pre_pad=5,
+                 device="cuda"
+                 ):
+        self.scale = scale
+        self.pre_pad = pre_pad
+        self.mod_scale = None
+        self.compile_res_min = compile_res_min
+        self.allowed_compile_resolutions = allowed_compile_resolutions
+        self.device = device
+
+        loadnet = torch.load(model_path)
+
+        # prefer to use params_ema
+        if 'params_ema' in loadnet:
+            keyname = 'params_ema'
+        else:
+            keyname = 'params'
+        model.load_state_dict(loadnet[keyname], strict=True)
+        model.eval()
+        self.model = model
+        if  compiled_model is not None:
+            compiled_model.load_state_dict(loadnet[keyname], strict=True)
+            compiled_model.eval()
+        self.compiled_model = compiled_model
+
+
+
+    def pre_process(self, img):
+        """Pre-process, such as pre-pad and mod pad, so that the images can be divisible
+        """
+        img = torch.from_numpy(np.transpose(img, (2, 0, 1))).float()
+        self.img = img.unsqueeze(0).to(self.device)
+
+        # pre_pad
+        if self.pre_pad != 0:
+            self.img = F.pad(self.img, (self.pre_pad, self.pre_pad, self.pre_pad, self.pre_pad), 'reflect').float()
+
+        # mod pad for divisible borders
+        self.mod_scale = None
+        if self.scale == 2:
+            self.mod_scale = 2
+        elif self.scale == 1:
+            self.mod_scale = 4
+        if self.mod_scale != None:
+            self.mod_pad_h, self.mod_pad_w = 0, 0
+            _, _, h, w = self.img.size()
+            if h % self.mod_scale != 0:
+                self.mod_pad_h = (self.mod_scale - h % self.mod_scale)
+            if w % self.mod_scale != 0:
+                self.mod_pad_w = (self.mod_scale - w % self.mod_scale)
+            self.img = F.pad(self.img, (0, self.mod_pad_w, 0, self.mod_pad_h), 'reflect')
+
+        _, _, h, w = self.img.size()
+        self.should_compile = self.compiled_model is not None and h * w > self.compile_res_min
+        self.compile_resolution_pad = (0,0,0,0)
+        if self.should_compile and self.allowed_compile_resolutions is not None:
+            # Fixed resolution padding
+            b, c, h, w = self.img.size()
+            print(f"Image size after pre-padding: {w}x{h}")
+
+            res = find_best_resolution(w, h, self.allowed_compile_resolutions)
+            if res is None:
+                raise "error could not find matching resolution"
+
+            target_resolution, (pad_left, pad_right, pad_top, pad_bottom) = res
+            print(f"Selected resolution: {target_resolution[0]}x{target_resolution[1]}")
+            print(f"Resolution padding: left={pad_left}, right={pad_right}, top={pad_top}, bottom={pad_bottom}")
+
+            # Apply resolution padding (left, right, top, bottom)
+            self.compile_resolution_pad = (pad_left, pad_right, pad_top, pad_bottom)
+            self.img = torch.nn.functional.pad(img, self.compile_resolution_pad, 'reflect')
+
+    def process(self):
+        # model inference
+        if self.should_compile:
+            print("use compiled model at resolution:", self.img.size())
+            self.compiled_model.to(self.device)
+            with torch.no_grad():
+                with torch.amp.autocast(self.device):
+                    self.output = self.compiled_model(self.img)
+            self.compiled_model.to("cpu")
+        else:
+            self.model.to(self.device)
+            with torch.no_grad():
+                with torch.amp.autocast(self.device):
+                    self.output = self.model(self.img)
+            self.model.to("cpu")
+
+    def post_process(self):
+
+        if self.should_compile:
+            if any(p > 0 for p in self.compile_resolution_pad):
+                _, _, h, w = self.output.size()
+                (pad_left, pad_right, pad_top, pad_bottom) = self.compile_resolution_pad
+                # Scale the padding by the upscale factor
+                out_pad_left = pad_left * self.scale
+                out_pad_right = pad_right * self.scale
+                out_pad_top = pad_top * self.scale
+                out_pad_bottom = pad_bottom * self.scale
+
+                self.output = self.output[:, :, out_pad_top:h - out_pad_bottom, out_pad_left:w - out_pad_right]
+                print(f"Removed resolution padding: {out_pad_left}, {out_pad_right}, {out_pad_top}, {out_pad_bottom}")
+
+        # remove extra pad
+        if self.mod_scale is not None:
+            _, _, h, w = self.output.size()
+            self.output = self.output[:, :, 0:h - self.mod_pad_h * self.scale, 0:w - self.mod_pad_w * self.scale]
+        # remove prepad
+        if self.pre_pad != 0:
+            _, _, h, w = self.output.size()
+            self.output = self.output[:, :, self.pre_pad* self.scale:h - self.pre_pad * self.scale, self.pre_pad* self.scale:w - self.pre_pad * self.scale]
+        return self.output
+
+    @torch.no_grad()
+    def enhance(self, imgBGR_BGRA, alpha_upsampler='realesrgan', outscale=None):
+        if outscale is not None:
+            print("outscale is ignored for this program")
+        img = imgBGR_BGRA
+        h_input, w_input = img.shape[0:2]
+        # img: numpy
+        img = img.astype(np.float32)
+        if np.max(img) > 256:  # 16-bit image
+            max_range = 65535
+            print('\tInput is a 16-bit image')
+        else:
+            max_range = 255
+        img = img / max_range
+        if img.shape[2] == 4:  # RGBA image with alpha channel
+            img_mode = 'RGBA'
+            alpha = img[:, :, 3]
+            img = img[:, :, 0:3]
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            if alpha_upsampler == 'realesrgan':
+                alpha = cv2.cvtColor(alpha, cv2.COLOR_GRAY2RGB)
+        else:
+            img_mode = 'RGB'
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+        # ------------------- process image (without the alpha channel) ------------------- #
+        self.pre_process(img)
+        self.process()
+        output_img = self.post_process()
+        output_img = output_img.data.squeeze().float().cpu().clamp_(0, 1).numpy()
+        output_img = np.transpose(output_img[[2, 1, 0], :, :], (1, 2, 0))
+        if img_mode == 'L':
+            output_img = cv2.cvtColor(output_img, cv2.COLOR_BGR2GRAY)
+
+        # ------------------- process the alpha channel if necessary ------------------- #
+        if img_mode == 'RGBA':
+            if alpha_upsampler == 'realesrgan':
+                self.pre_process(alpha)
+                self.process()
+                output_alpha = self.post_process()
+                output_alpha = output_alpha.data.squeeze().float().cpu().clamp_(0, 1).numpy()
+                output_alpha = np.transpose(output_alpha[[2, 1, 0], :, :], (1, 2, 0))
+                output_alpha = cv2.cvtColor(output_alpha, cv2.COLOR_BGR2GRAY)
+            else:  # use the cv2 resize for alpha channel
+                h, w = alpha.shape[0:2]
+                output_alpha = cv2.resize(alpha, (w * self.scale, h * self.scale), interpolation=cv2.INTER_LINEAR)
+
+            # merge the alpha channel
+            output_img = cv2.cvtColor(output_img, cv2.COLOR_BGR2BGRA)
+            output_img[:, :, 3] = output_alpha
+
+        # ------------------------------ return ------------------------------ #
+        if max_range == 65535:  # 16-bit image
+            output = (output_img * 65535.0).round().astype(np.uint16)
+        else:
+            output = (output_img * 255.0).round().astype(np.uint8)
+
+        return output, img_mode
+
 
 
 class PrefetchReader(threading.Thread):
