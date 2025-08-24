@@ -408,7 +408,7 @@ class RealESRGANerV2():
         # remove prepad
         if self.pre_pad != 0:
             _, _, h, w = self.output.size()
-            self.output = self.output[:, :, 0:h - self.pre_pad * self.scale, 0:w - self.pre_pad * self.scale]
+            self.output = self.output[:, :, self.pre_pad* self.scale:h - self.pre_pad * self.scale, self.pre_pad* self.scale:w - self.pre_pad * self.scale]
         return self.output
 
     @torch.no_grad()
