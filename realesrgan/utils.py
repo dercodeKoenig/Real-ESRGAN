@@ -333,7 +333,7 @@ class RealESRGANerV2():
 
         # pre_pad
         if self.pre_pad != 0:
-            self.img = F.pad(img, (self.pre_pad, self.pre_pad, self.pre_pad, self.pre_pad), 'reflect').float()
+            self.img = F.pad(self.img, (self.pre_pad, self.pre_pad, self.pre_pad, self.pre_pad), 'reflect').float()
 
         # mod pad for divisible borders
         self.mod_scale = 1
