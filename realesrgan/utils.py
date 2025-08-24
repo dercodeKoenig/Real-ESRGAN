@@ -321,7 +321,7 @@ class RealESRGANerV2():
         if  compiled_model is not None:
             compiled_model.load_state_dict(loadnet[keyname], strict=True)
             compiled_model.eval()
-            self.compiled_model = compiled_model
+        self.compiled_model = compiled_model
 
 
 
@@ -336,12 +336,12 @@ class RealESRGANerV2():
             self.img = F.pad(self.img, (self.pre_pad, self.pre_pad, self.pre_pad, self.pre_pad), 'reflect').float()
 
         # mod pad for divisible borders
-        self.mod_scale = 1
+        self.mod_scale = None
         if self.scale == 2:
             self.mod_scale = 2
         elif self.scale == 1:
             self.mod_scale = 4
-        if self.mod_scale != 1:
+        if self.mod_scale != None:
             self.mod_pad_h, self.mod_pad_w = 0, 0
             _, _, h, w = self.img.size()
             if h % self.mod_scale != 0:
