@@ -314,13 +314,13 @@ class DiffusionSRModel(SRModel):
 
             # Predict x0
             pred_x0 = (x - torch.sqrt(1 - alpha_t) * predicted_noise) / torch.sqrt(alpha_t)
-            pred_x0 = torch.clamp(pred_x0, -1, 1)
+            pred_x0 = torch.clamp(pred_x0, 0, 1)
 
             # Compute direction to x_t-1
             direction = torch.sqrt(1 - alpha_prev) * predicted_noise
             x = torch.sqrt(alpha_prev) * pred_x0 + direction
 
-        return torch.clamp((x + 1) / 2, 0, 1)  # Convert from [-1,1] to [0,1]
+        return x
 
     def test(self):
         """Test function for inference."""
