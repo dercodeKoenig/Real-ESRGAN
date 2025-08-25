@@ -475,7 +475,7 @@ class RealESRGANerV2():
 class RealESRDiffuser(RealESRGANerV2):
 
     def __init__(self, steps=1, step_size=0.1, **kwargs):
-        super().__init__(**kwargs)  # Pass remaining args to parent
+        super().__init__(scale=1, **kwargs)  # Pass remaining args to parent
         self.steps = steps
         self.step_size = step_size
 
