@@ -72,11 +72,6 @@ class DiffusionSRModel(SRModel):
         self.setup_optimizers()
         self.setup_schedulers()
 
-    def add_noise(self, x_start, noise, weights):
-        # reshape weights to (B,1,1,1) for broadcasting
-        w = weights.view(-1, 1, 1, 1)
-        return (1.0 - w) * x_start + w * noise
-
     @torch.no_grad()
     def _dequeue_and_enqueue(self):
         """Training pair pool for increasing diversity in a batch."""
@@ -232,7 +227,8 @@ class DiffusionSRModel(SRModel):
             noise = torch.randn_like(self.gt)
 
             # Add noise to GT images
-            noisy_gt = self.add_noise(self.gt, noise, weights)
+            w = weights.view(-1, 1, 1, 1)
+            noisy_gt =  self.gt + w * noise
 
             # Concatenate noisy GT with interpolated LQ as input
             model_input = torch.cat([noisy_gt, self.lq], dim=1)  # [B, 6, H, W] if RGB
@@ -241,7 +237,7 @@ class DiffusionSRModel(SRModel):
             predicted_noise = self.net_g(model_input)
 
             # Compute loss
-            loss = F.mse_loss(predicted_noise, noise)
+            loss = F.mse_loss(predicted_noise, w * noise)
 
         # Backward pass
         self.scaler_g.scale(loss).backward()
