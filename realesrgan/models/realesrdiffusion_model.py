@@ -2,6 +2,8 @@ import numpy as np
 import random
 import torch
 from collections import OrderedDict
+
+from basicsr import get_root_logger, build_network
 from torch.nn import functional as F
 from torch.amp import autocast, GradScaler
 import math
@@ -51,6 +53,29 @@ class DiffusionSRModel(SRModel):
         print(f"Diffusion timesteps: {self.num_timesteps}")
         print(f"Noise schedule: {self.noise_schedule}")
         print(f"Scale range: {self.min_scale}-{self.max_scale}x")
+
+    def init_training_settings(self):
+        train_opt = self.opt['train']
+
+        self.ema_decay = train_opt.get('ema_decay', 0)
+        if self.ema_decay > 0:
+            logger = get_root_logger()
+            logger.info(f'Use Exponential Moving Average with decay: {self.ema_decay}')
+            # define network net_g with Exponential Moving Average (EMA)
+            # net_g_ema is used only for testing on one GPU and saving
+            # There is no need to wrap with DistributedDataParallel
+            self.net_g_ema = build_network(self.opt['network_g']).to(self.device)
+            # load pretrained model
+            load_path = self.opt['path'].get('pretrain_network_g', None)
+            if load_path is not None:
+                self.load_network(self.net_g_ema, load_path, self.opt['path'].get('strict_load_g', True), 'params_ema')
+            else:
+                self.model_ema(0)  # copy net_g weight
+            self.net_g_ema.eval()
+
+        # set up optimizers and schedulers
+        self.setup_optimizers()
+        self.setup_schedulers()
 
     def _init_noise_schedule(self):
         """Initialize noise schedule for diffusion training."""

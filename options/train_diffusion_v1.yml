@@ -84,7 +84,7 @@ network_g:
   processing_channels: 32
   num_block: 8
   num_grow_ch: 32
-  num_pre_upscale_ch: 12
+  num_pre_upscale_ch: 64
   scale: 1 # scale will be dynamic, input should have same resolution as output
   use_attention: true
 
@@ -103,7 +103,19 @@ train:
   min_scale: 1.0
   max_scale: 4.0
   warmup_iter: 2000
+  total_iter: 20000
 
+  ema_decay: 0.999
+  optim_g:
+    type: Adam
+    lr: 0.0001
+    weight_decay: 0
+    betas: [0.9, 0.99]
+
+  scheduler:
+      type: MultiStepLR
+      milestones: [500000]
+      gamma: 0.5
 
 val:
    val_freq: 50
