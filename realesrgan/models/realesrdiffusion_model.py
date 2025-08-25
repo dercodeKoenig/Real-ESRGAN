@@ -283,7 +283,6 @@ class DiffusionSRModel(SRModel):
         # Logging
         loss_dict = OrderedDict()
         loss_dict['l_diffusion'] = loss.detach()
-        loss_dict['timestep_mean'] = timesteps.float().mean()
 
         if self.ema_decay > 0:
             self.model_ema(decay=self.ema_decay)
