@@ -472,6 +472,56 @@ class RealESRGANerV2():
 
 
 
+class RealESRDiffuser(RealESRGANerV2):
+
+    def __init__(self, steps=1, step_size=0.1, **kwargs):
+        super().__init__(**kwargs)  # Pass remaining args to parent
+        self.steps = steps
+        self.step_size = step_size
+
+    def sample_naive(self, lq, model):
+        """Naive denoising: iteratively subtract a fraction of predicted noise."""
+
+        batch_size, _, h, w = lq.shape
+
+        # Start from pure noise
+        x = torch.randn(batch_size, 3, h, w, device=self.device)
+
+        for _ in range(self.steps):
+            # Predict noise
+            model_input = torch.cat([x, lq], dim=1)
+            predicted_noise = model(model_input)
+
+            # Update rule: subtract a fraction of predicted noise
+            x = x - self.step_size * predicted_noise
+
+        # Optionally clamp to [0,1] if your model outputs images in that range
+        return torch.clamp(x, 0, 1)
+
+
+    def process(self):
+        # model inference
+        if self.should_compile:
+            print("use compiled model at resolution:", self.img.size())
+            self.compiled_model.to(self.device)
+            with torch.no_grad():
+                with torch.amp.autocast(self.device):
+                    self.output = self.sample_naive(self.img, self.compiled_model)
+            self.compiled_model.to("cpu")
+        else:
+            self.model.to(self.device)
+            with torch.no_grad():
+                with torch.amp.autocast(self.device):
+                    self.output = self.sample_naive(self.img, self.model)
+            self.model.to("cpu")
+
+
+    @torch.no_grad()
+    def enhance(self, imgBGR_BGRA, alpha_upsampler=None, outscale=None):
+        if alpha_upsampler is not None:
+            print("Alpha channel will always use interpolation no matter what you say!")
+        return super().enhance(imgBGR_BGRA, alpha_upsampler='', outscale=outscale)
+
 class PrefetchReader(threading.Thread):
     """Prefetch images.
 
