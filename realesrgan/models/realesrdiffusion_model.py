@@ -9,7 +9,7 @@ import math
 from basicsr.data.degradations import random_add_gaussian_noise_pt, random_add_poisson_noise_pt
 from basicsr.data.transforms import paired_random_crop
 from basicsr.models.sr_model import SRModel
-from basicsr.utils import DiffJPEG, USMSharp
+from basicsr.utils import DiffJPEG
 from basicsr.utils.img_process_util import filter2D
 from basicsr.utils.registry import MODEL_REGISTRY
 
@@ -34,7 +34,6 @@ class DiffusionSRModel(SRModel):
         self.net_g.compile(mode="max-autotune", dynamic=False, fullgraph=True)
 
         self.jpeger = DiffJPEG(differentiable=False).cuda()
-        self.usm_sharpener = USMSharp().cuda()
         self.queue_size = opt.get('queue_size', 180)
 
         # Initialize AMP components
@@ -113,7 +112,6 @@ class DiffusionSRModel(SRModel):
         """Accept data from dataloader and add degradations with dynamic scaling."""
         if self.is_train and self.opt.get('high_order_degradation', True):
             self.gt = data['gt'].to(self.device)
-            self.gt_usm = self.usm_sharpener(self.gt)
 
             self.kernel1 = data['kernel1'].to(self.device)
             self.kernel2 = data['kernel2'].to(self.device)
@@ -127,7 +125,7 @@ class DiffusionSRModel(SRModel):
             target_w = int(ori_w / scale_factor)
 
             # ----------------------- The first degradation process ----------------------- #
-            out = filter2D(self.gt_usm, self.kernel1)
+            out = filter2D(self.gt, self.kernel1)
 
             # random resize (but more constrained)
             updown_type = random.choices(['up', 'down', 'keep'], self.opt['resize_prob'])[0]
@@ -210,17 +208,15 @@ class DiffusionSRModel(SRModel):
 
             # Random crop both GT and LQ
             gt_size = self.opt['gt_size']
-            (self.gt, self.gt_usm), self.lq = paired_random_crop([self.gt, self.gt_usm], self.lq, gt_size, scale=1)
+            self.gt, self.lq = paired_random_crop(self.gt, self.lq, gt_size, scale=1)
 
             # Training pair pool
             self._dequeue_and_enqueue()
-            self.gt_usm = self.usm_sharpener(self.gt)
             self.lq = self.lq.contiguous()
         else:
             # For validation - interpolate LQ to GT size
             self.lq_orig = data['lq'].to(self.device)
             self.gt = data['gt'].to(self.device)
-            self.gt_usm = self.usm_sharpener(self.gt)
             # Interpolate LQ to GT size
             self.lq = F.interpolate(self.lq_orig, size=self.gt.shape[-2:], mode='bicubic', align_corners=False)
 
@@ -269,7 +265,7 @@ class DiffusionSRModel(SRModel):
         self.log_dict = self.reduce_loss_dict(loss_dict)
 
     @torch.no_grad()
-    def sample_ddim(self, lq, steps=50, eta=0.0):
+    def sample_ddim(self, lq, model, steps=50, eta=0.0):
         """DDIM sampling for inference."""
         batch_size, _, h, w = lq.shape
 
@@ -284,7 +280,7 @@ class DiffusionSRModel(SRModel):
 
             # Predict noise
             model_input = torch.cat([x, lq], dim=1)
-            predicted_noise = self.net_g(model_input)
+            predicted_noise = model(model_input)
 
             # DDIM step
             alpha_t = self.alphas_cumprod[t]
@@ -306,11 +302,11 @@ class DiffusionSRModel(SRModel):
         if hasattr(self, 'net_g_ema'):
             self.net_g_ema.eval()
             with torch.no_grad():
-                self.output = self.sample_ddim(self.lq)
+                self.output = self.sample_ddim(self.lq, self.net_g_ema)
         else:
             self.net_g.eval()
             with torch.no_grad():
-                self.output = self.sample_ddim(self.lq)
+                self.output = self.sample_ddim(self.lq, self.net_g)
             self.net_g.train()
 
     def nondist_validation(self, dataloader, current_iter, tb_logger, save_img):
