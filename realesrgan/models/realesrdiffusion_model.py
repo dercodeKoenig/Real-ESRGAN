@@ -34,7 +34,7 @@ class DiffusionSRModel(SRModel):
     def __init__(self, opt):
         super(DiffusionSRModel, self).__init__(opt)
 
-        #self.net_g.compile(mode="max-autotune", dynamic=False, fullgraph=True)
+        self.net_g.compile(mode="max-autotune", dynamic=False, fullgraph=True)
         #self.net_g.compile(dynamic=False, fullgraph=True)
 
         self.jpeger = DiffJPEG(differentiable=False).cuda()

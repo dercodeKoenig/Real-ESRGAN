@@ -102,7 +102,7 @@ train:
   min_scale: 1.0
   max_scale: 4.0
   warmup_iter: 2000
-  total_iter: 20000
+  total_iter: 50000
 
   ema_decay: 0.999
   optim_g:
@@ -117,7 +117,7 @@ train:
       gamma: 0.5
 
 val:
-   val_freq: 50
+   val_freq: 500
    save_img: True
 
    metrics:
