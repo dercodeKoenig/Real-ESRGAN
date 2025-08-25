@@ -102,8 +102,8 @@ network_d:
 
 # path
 path:
-  pretrain_network_g: experiments/train_v2_attn_x4_m_exp/models/net_g_810000.pth
-  pretrain_network_d: experiments/train_v2_attn_x4_m_exp/models/net_d_810000.pth
+  pretrain_network_g: experiments/train_v3_attn_x4_m/models/net_g_810000.pth
+  pretrain_network_d: experiments/train_v3_attn_x4_m/models/net_d_810000.pth
   param_key_g: params_ema
   strict_load_g: true
   resume_state: 
