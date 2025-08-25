@@ -14,6 +14,7 @@ from basicsr.models.sr_model import SRModel
 from basicsr.utils import DiffJPEG
 from basicsr.utils.img_process_util import filter2D
 from basicsr.utils.registry import MODEL_REGISTRY
+from tqdm import tqdm
 
 # idk claude says it is faster
 torch.backends.cudnn.benchmark = True
@@ -300,8 +301,7 @@ class DiffusionSRModel(SRModel):
         # Create sampling timesteps
         timesteps = torch.linspace(self.num_timesteps - 1, 0, steps, dtype=torch.long, device=self.device)
 
-        for i, t in enumerate(timesteps):
-            t_batch = t.repeat(batch_size)
+        for i, t in tqdm(enumerate(timesteps)):
 
             # Predict noise
             model_input = torch.cat([x, lq], dim=1)
