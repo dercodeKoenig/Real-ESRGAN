@@ -44,16 +44,9 @@ class DiffusionSRModel(SRModel):
         self.scaler_g = GradScaler()
 
         # Diffusion parameters
-        self.num_timesteps = opt['train'].get('num_timesteps', 100)
-        self.noise_schedule = opt['train'].get('noise_schedule', 'linear')
         self.min_scale = opt['train'].get('min_scale', 1.0)
         self.max_scale = opt['train'].get('max_scale', 4.0)
 
-        # Initialize noise schedule
-        self._init_noise_schedule()
-
-        print(f"Diffusion timesteps: {self.num_timesteps}")
-        print(f"Noise schedule: {self.noise_schedule}")
         print(f"Scale range: {self.min_scale}-{self.max_scale}x")
 
     def init_training_settings(self):
@@ -79,31 +72,10 @@ class DiffusionSRModel(SRModel):
         self.setup_optimizers()
         self.setup_schedulers()
 
-    def _init_noise_schedule(self):
-        """Initialize noise schedule for diffusion training."""
-        if self.noise_schedule == 'linear':
-            # Linear schedule from 0.0001 to 0.02
-            self.betas = torch.linspace(0.0001, 0.02, self.num_timesteps).cuda()
-        elif self.noise_schedule == 'cosine':
-            # Cosine schedule
-            steps = self.num_timesteps + 1
-            x = torch.linspace(0, self.num_timesteps, steps)
-            alphas_cumprod = torch.cos(((x / self.num_timesteps) + 0.008) / 1.008 * math.pi * 0.5) ** 2
-            alphas_cumprod = alphas_cumprod / alphas_cumprod[0]
-            betas = 1 - (alphas_cumprod[1:] / alphas_cumprod[:-1])
-            self.betas = torch.clip(betas, 0, 0.999).cuda()
-
-        self.alphas = 1. - self.betas
-        self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
-        self.sqrt_alphas_cumprod = torch.sqrt(self.alphas_cumprod)
-        self.sqrt_one_minus_alphas_cumprod = torch.sqrt(1. - self.alphas_cumprod)
-
-    def add_noise(self, x_start, noise, timesteps):
-        """Add noise to clean images according to diffusion schedule."""
-        sqrt_alpha_cumprod_t = self.sqrt_alphas_cumprod[timesteps].view(-1, 1, 1, 1)
-        sqrt_one_minus_alpha_cumprod_t = self.sqrt_one_minus_alphas_cumprod[timesteps].view(-1, 1, 1, 1)
-
-        return sqrt_alpha_cumprod_t * x_start + sqrt_one_minus_alpha_cumprod_t * noise
+    def add_noise(self, x_start, noise, weights):
+        # reshape weights to (B,1,1,1) for broadcasting
+        w = weights.view(-1, 1, 1, 1)
+        return (1.0 - w) * x_start + w * noise
 
     @torch.no_grad()
     def _dequeue_and_enqueue(self):
@@ -254,13 +226,13 @@ class DiffusionSRModel(SRModel):
         with autocast('cuda'):
             # Sample random timesteps for each sample in batch
             batch_size = self.gt.size(0)
-            timesteps = torch.randint(0, self.num_timesteps, (batch_size,), device=self.device)
+            weights = torch.rand((batch_size,), device=self.device)
 
             # Sample noise
             noise = torch.randn_like(self.gt)
 
             # Add noise to GT images
-            noisy_gt = self.add_noise(self.gt, noise, timesteps)
+            noisy_gt = self.add_noise(self.gt, noise, weights)
 
             # Concatenate noisy GT with interpolated LQ as input
             model_input = torch.cat([noisy_gt, self.lq], dim=1)  # [B, 6, H, W] if RGB
@@ -291,47 +263,35 @@ class DiffusionSRModel(SRModel):
         self.log_dict = self.reduce_loss_dict(loss_dict)
 
     @torch.no_grad()
-    def sample_ddim(self, lq, model, steps=50, eta=0.0):
-        """DDIM sampling for inference."""
+    def sample_naive(self, lq, model, steps=50, step_size=0.1):
+        """Naive denoising: iteratively subtract a fraction of predicted noise."""
+
         batch_size, _, h, w = lq.shape
 
         # Start from pure noise
         x = torch.randn(batch_size, 3, h, w, device=self.device)
 
-        # Create sampling timesteps
-        timesteps = torch.linspace(self.num_timesteps - 1, 0, steps, dtype=torch.long, device=self.device)
-
-        for i, t in tqdm(enumerate(timesteps)):
-
+        for _ in range(steps):
             # Predict noise
             model_input = torch.cat([x, lq], dim=1)
             predicted_noise = model(model_input)
 
-            # DDIM step
-            alpha_t = self.alphas_cumprod[t]
-            alpha_prev = self.alphas_cumprod[timesteps[i + 1]] if i < len(timesteps) - 1 else torch.tensor(1.0,
-                                                                                                           device=self.device)
+            # Update rule: subtract a fraction of predicted noise
+            x = x - step_size * predicted_noise
 
-            # Predict x0
-            pred_x0 = (x - torch.sqrt(1 - alpha_t) * predicted_noise) / torch.sqrt(alpha_t)
-            pred_x0 = torch.clamp(pred_x0, 0, 1)
-
-            # Compute direction to x_t-1
-            direction = torch.sqrt(1 - alpha_prev) * predicted_noise
-            x = torch.sqrt(alpha_prev) * pred_x0 + direction
-
-        return x
+        # Optionally clamp to [0,1] if your model outputs images in that range
+        return torch.clamp(x, 0, 1)
 
     def test(self):
         """Test function for inference."""
         if hasattr(self, 'net_g_ema'):
             self.net_g_ema.eval()
             with torch.no_grad():
-                self.output = self.sample_ddim(self.lq, self.net_g_ema)
+                self.output = self.sample_naive(self.lq, self.net_g_ema)
         else:
             self.net_g.eval()
             with torch.no_grad():
-                self.output = self.sample_ddim(self.lq, self.net_g)
+                self.output = self.sample_naive(self.lq, self.net_g)
             self.net_g.train()
 
     def nondist_validation(self, dataloader, current_iter, tb_logger, save_img):
