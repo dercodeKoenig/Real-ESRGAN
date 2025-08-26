@@ -1,5 +1,5 @@
 # general settings
-name: ft_moredata_v3_attn_x4_m
+name: ft_moredata_betterD_v3_attn_x4_m
 model_type: RealESRGANModel
 scale: 4
 num_gpu: auto  # auto: can infer from your visible devices automatically. official: 4 GPUs
@@ -31,7 +31,7 @@ gray_noise_prob2: 0.4
 jpeg_range2: [30, 95]
 
 gt_size: 512
-queue_size: 64
+queue_size: 60
 
 # dataset and data loader settings
 datasets:
@@ -68,7 +68,7 @@ datasets:
     # data loader
     use_shuffle: true
     num_worker_per_gpu: 4
-    batch_size_per_gpu: 8
+    batch_size_per_gpu: 4
     dataset_enlarge_ratio: 1
     prefetch_mode: ~
 
@@ -95,15 +95,15 @@ network_g:
   use_attention: true
 
 network_d:
-  type: UNetDiscriminatorSN
+  type: UNetDiscriminatorSN2
   num_in_ch: 3
-  num_feat: 64
+  num_feat: 128
   skip_connection: True
 
 # path
 path:
   pretrain_network_g: experiments/train_v3_attn_x4_m/models/net_g_810000.pth
-  pretrain_network_d: experiments/train_v3_attn_x4_m/models/net_d_810000.pth
+  pretrain_network_d: #experiments/train_v3_attn_x4_m/models/net_d_810000.pth
   param_key_g: params_ema
   strict_load_g: true
   resume_state: 
