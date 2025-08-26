@@ -251,7 +251,7 @@ class DiffusionSRModel(SRModel):
             predicted_noise = self.net_g(model_input)
 
             # Compute loss
-            loss = loss_fn(predicted_noise, w * noise)
+            loss = self.loss_fn(predicted_noise, w * noise)
 
         # Backward pass
         self.scaler_g.scale(loss).backward()
