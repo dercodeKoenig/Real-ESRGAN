@@ -492,7 +492,7 @@ class RealESRDiffuser(RealESRGANerV2):
         for _ in range(self.steps):
             model_input = torch.cat([x, lq], dim=1)
             predicted_noise = model(model_input)
-            x = (x - self.step_size * predicted_noise) / (1-self.step_size)
+            x = (x - self.step_size * predicted_noise)
 
         self.noise_output = x
         return torch.clamp(x, 0, 1)

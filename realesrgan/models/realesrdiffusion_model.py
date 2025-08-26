@@ -48,7 +48,7 @@ class DiffusionSRModel(SRModel):
         self.max_scale = opt['train'].get('max_scale', 4.0)
 
         self.test_steps = opt['val'].get("test_steps", 20)
-        self.test_step_size = opt['val'].get("test_step_size", 0.1)
+        self.test_step_size = opt['val'].get("step_size", 0.1)
 
         target_loss = opt['train'].get('loss', '')
         if target_loss == 'mse':
@@ -60,7 +60,7 @@ class DiffusionSRModel(SRModel):
 
         print(f"Scale range: {self.min_scale}-{self.max_scale}x")
         print("test steps:", self.test_steps)
-        print("test step size:", self.test_step_size)
+        print("step size:", self.test_step_size)
         print("use loss:", self.loss_fn)
 
     def init_training_settings(self):
@@ -233,25 +233,23 @@ class DiffusionSRModel(SRModel):
         self.optimizer_g.zero_grad()
 
         with autocast('cuda'):
-            # Sample random timesteps for each sample in batch
-            batch_size = self.gt.size(0)
-            weights = torch.rand((batch_size,), device=self.device)
-
             # Sample noise
             noise = torch.randn_like(self.gt)
-
             # Add noise to GT images
-            w = weights.view(-1, 1, 1, 1)
-            noisy_gt =  (1-w) * self.gt + w * noise
+            batch_size = self.gt.size(0)
+            weights = torch.rand((batch_size,), device=self.device)
+            noise = noise * weights.view(-1, 1, 1, 1)
+            
+            noisy_gt =  self.gt + noise
 
             # Concatenate noisy GT with interpolated LQ as input
             model_input = torch.cat([noisy_gt, self.lq], dim=1)  # [B, 6, H, W] if RGB
-
+            
             # Predict noise
             predicted_noise = self.net_g(model_input)
-
-            # Compute loss
-            loss = self.loss_fn(predicted_noise, w * noise)
+        
+            # Compute loss: predict raw step noise
+            loss = self.loss_fn(predicted_noise, noise)
 
         # Backward pass
         self.scaler_g.scale(loss).backward()
@@ -286,7 +284,7 @@ class DiffusionSRModel(SRModel):
             predicted_noise = model(model_input)
 
             # Update rule: subtract a fraction of predicted noise and scale back up
-            x = (x - self.test_step_size * predicted_noise) / (1-self.test_step_size)
+            x = x - self.test_step_size * predicted_noise
 
         # Optionally clamp to [0,1] if your model outputs images in that range
         return torch.clamp(x, 0, 1)

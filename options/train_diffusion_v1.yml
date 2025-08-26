@@ -4,6 +4,8 @@ model_type: DiffusionSRModel
 num_gpu: auto
 manual_seed: 0
 
+
+
 # ----------------- options for synthesizing training data  ----------------- #
 
 # the first degradation process
@@ -100,10 +102,10 @@ path:
 # training settings
 train:
   min_scale: 1.0
-  max_scale: 4.0
+  max_scale: 8.0
   warmup_iter: 2000
   total_iter: 500000
-  loss: l1
+  loss: mse
 
   ema_decay: 0.999
   optim_g:
@@ -121,7 +123,7 @@ val:
    val_freq: 500
    save_img: True
    test_steps: 20
-   test_step_size: 0.05
+   step_size: 1.0
 
    metrics:
      psnr: # metric name
