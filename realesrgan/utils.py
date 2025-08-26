@@ -520,7 +520,10 @@ class RealESRDiffuser(RealESRGANerV2):
                 target_resolution, (pad_left, pad_right, pad_top, pad_bottom) = res
                 x = torch.nn.functional.pad(x, (pad_left, pad_right, pad_top, pad_bottom), 'reflect')
         else:
-            x = torch.randn(batch_size, 3, h, w, device=self.device) + lq
+            # Compute mean color per image
+            lq_mean = lq.mean(dim=[2,3], keepdim=True)  # shape [B, C, 1, 1]
+            # Add to Gaussian noise
+            x = torch.randn(batch_size, 3, h, w, device=self.device) + lq_mean
 
         for _ in range(self.steps):
             # Predict noise

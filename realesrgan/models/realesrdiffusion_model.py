@@ -278,8 +278,10 @@ class DiffusionSRModel(SRModel):
 
         batch_size, _, h, w = lq.shape
 
-        # Start from pure noise
-        x = torch.randn(batch_size, 3, h, w, device=self.device) + lq
+        # Compute mean color per image
+        lq_mean = lq.mean(dim=[2,3], keepdim=True)  # shape [B, C, 1, 1]
+        # Add to Gaussian noise
+        x = torch.randn(batch_size, 3, h, w, device=self.device) + lq_mean
 
         for _ in range(self.test_steps):
             # Predict noise
