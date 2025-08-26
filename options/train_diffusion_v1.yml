@@ -102,7 +102,7 @@ train:
   min_scale: 1.0
   max_scale: 4.0
   warmup_iter: 2000
-  total_iter: 50000
+  total_iter: 500000
 
   ema_decay: 0.999
   optim_g:
