@@ -5,7 +5,7 @@ from torch.nn.utils import spectral_norm
 
 
 @ARCH_REGISTRY.register()
-class UNetDiscriminatorSN(nn.Module):
+class UNetDiscriminatorSN2(nn.Module):
     """Defines a U-Net discriminator with spectral normalization (SN)
 
     It is used in Real-ESRGAN: Training Real-World Blind Super-Resolution with Pure Synthetic Data.
@@ -17,7 +17,7 @@ class UNetDiscriminatorSN(nn.Module):
     """
 
     def __init__(self, num_in_ch, num_feat=64, skip_connection=True):
-        super(UNetDiscriminatorSN, self).__init__()
+        super(UNetDiscriminatorSN2, self).__init__()
         self.skip_connection = skip_connection
         norm = spectral_norm
         
