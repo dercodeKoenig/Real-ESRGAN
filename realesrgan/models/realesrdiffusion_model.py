@@ -47,7 +47,12 @@ class DiffusionSRModel(SRModel):
         self.min_scale = opt['train'].get('min_scale', 1.0)
         self.max_scale = opt['train'].get('max_scale', 4.0)
 
+        self.test_steps = opt['val'].get("test_steps", 20)
+        self.test_step_size = opt['val'].get("test_step_size", 0.1)
+
         print(f"Scale range: {self.min_scale}-{self.max_scale}x")
+        print("test steps:", self.test_steps)
+        print("test step size:", self.test_step_size)
 
     def init_training_settings(self):
         train_opt = self.opt['train']
@@ -260,7 +265,7 @@ class DiffusionSRModel(SRModel):
         self.log_dict = self.reduce_loss_dict(loss_dict)
 
     @torch.no_grad()
-    def sample_naive(self, lq, model, steps=20, step_size=1):
+    def sample_naive(self, lq, model):
         """Naive denoising: iteratively subtract a fraction of predicted noise."""
 
         batch_size, _, h, w = lq.shape
@@ -268,13 +273,13 @@ class DiffusionSRModel(SRModel):
         # Start from pure noise
         x = torch.randn(batch_size, 3, h, w, device=self.device) + lq
 
-        for _ in range(steps):
+        for _ in range(self.test_steps):
             # Predict noise
             model_input = torch.cat([x, lq], dim=1)
             predicted_noise = model(model_input)
 
             # Update rule: subtract a fraction of predicted noise
-            x = x - step_size * predicted_noise
+            x = x - self.test_step_size * predicted_noise
 
         # Optionally clamp to [0,1] if your model outputs images in that range
         return torch.clamp(x, 0, 1)
