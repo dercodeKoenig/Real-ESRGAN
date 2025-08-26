@@ -484,13 +484,17 @@ class RealESRDiffuser(RealESRGANerV2):
 
         batch_size, _, h, w = lq.shape
 
-        x = torch.randn(batch_size, 3, h, w, device=self.device)
+        if self.noise_input is None:
+            x = torch.randn(batch_size, 3, h, w, device=self.device)
+        else:
+            x = self.noise_input
 
         for _ in range(self.steps):
             model_input = torch.cat([x, lq], dim=1)
             predicted_noise = model(model_input)
             x = (x - self.step_size * predicted_noise) / (1-self.step_size)
-        
+
+        self.noise_output = x
         return torch.clamp(x, 0, 1)
 
 
@@ -512,11 +516,11 @@ class RealESRDiffuser(RealESRGANerV2):
 
 
     @torch.no_grad()
-    def enhance(self, imgBGR_BGRA, alpha_upsampler=None, outscale=None):
+    def enhance(self, imgBGR_BGRA, noise_input = None, alpha_upsampler=None, outscale=None):
         if alpha_upsampler is not None:
             print("Alpha channel will always use interpolation no matter what you say!")
-
-        return super().enhance(imgBGR_BGRA, alpha_upsampler='', outscale=outscale)
+        self.noise_input = noise_input
+        return super().enhance(imgBGR_BGRA, alpha_upsampler='', outscale=outscale)[0], self.noise_output
 
 class PrefetchReader(threading.Thread):
     """Prefetch images.
