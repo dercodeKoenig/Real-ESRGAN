@@ -50,9 +50,18 @@ class DiffusionSRModel(SRModel):
         self.test_steps = opt['val'].get("test_steps", 20)
         self.test_step_size = opt['val'].get("test_step_size", 0.1)
 
+        target_loss = opt['train'].get('loss', '')
+        if target_loss == 'mse':
+            self.loss_fn = F.mse_loss
+        elif target_loss == 'l1':
+            self.loss_fn = F.l1_loss
+        else:
+            raise "no loss provided"
+
         print(f"Scale range: {self.min_scale}-{self.max_scale}x")
         print("test steps:", self.test_steps)
         print("test step size:", self.test_step_size)
+        print("use loss:", self.loss_fn)
 
     def init_training_settings(self):
         train_opt = self.opt['train']
@@ -242,8 +251,7 @@ class DiffusionSRModel(SRModel):
             predicted_noise = self.net_g(model_input)
 
             # Compute loss
-            loss = F.mse_loss(predicted_noise, w * noise)
-            #loss = F.l1_loss(predicted_noise, w * noise)
+            loss = loss_fn(predicted_noise, w * noise)
 
         # Backward pass
         self.scaler_g.scale(loss).backward()
