@@ -260,13 +260,13 @@ class DiffusionSRModel(SRModel):
         self.log_dict = self.reduce_loss_dict(loss_dict)
 
     @torch.no_grad()
-    def sample_naive(self, lq, model, steps=50, step_size=0.1):
+    def sample_naive(self, lq, model, steps=20, step_size=1):
         """Naive denoising: iteratively subtract a fraction of predicted noise."""
 
         batch_size, _, h, w = lq.shape
 
         # Start from pure noise
-        x = torch.randn(batch_size, 3, h, w, device=self.device)
+        x = torch.randn(batch_size, 3, h, w, device=self.device) + lq
 
         for _ in range(steps):
             # Predict noise
