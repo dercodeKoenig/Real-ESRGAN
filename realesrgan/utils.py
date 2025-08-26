@@ -485,7 +485,7 @@ class RealESRDiffuser(RealESRGANerV2):
         batch_size, _, h, w = lq.shape
 
         if self.noise_img is not None:
-            x = torch.from_numpy(np.transpose(self.input_img, (2, 0, 1))).float()
+            x = torch.from_numpy(np.transpose(self.noise_img, (2, 0, 1))).float()
             x = x.unsqueeze(0).to(self.device)
 
             # pre_pad
