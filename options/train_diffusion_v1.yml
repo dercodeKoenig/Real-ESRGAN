@@ -120,8 +120,8 @@ train:
 val:
    val_freq: 500
    save_img: True
-   test_steps: 21
-   test_step_size: 0.15
+   test_steps: 20
+   test_step_size: 0.05
 
    metrics:
      psnr: # metric name
