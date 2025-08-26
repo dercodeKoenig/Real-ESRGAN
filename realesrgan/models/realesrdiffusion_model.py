@@ -242,7 +242,7 @@ class DiffusionSRModel(SRModel):
 
             # Add noise to GT images
             w = weights.view(-1, 1, 1, 1)
-            noisy_gt =  self.gt + w * noise
+            noisy_gt =  (1-w) * self.gt + w * noise
 
             # Concatenate noisy GT with interpolated LQ as input
             model_input = torch.cat([noisy_gt, self.lq], dim=1)  # [B, 6, H, W] if RGB
@@ -278,18 +278,15 @@ class DiffusionSRModel(SRModel):
 
         batch_size, _, h, w = lq.shape
 
-        # Compute mean color per image
-        lq_mean = lq.mean(dim=[2,3], keepdim=True)  # shape [B, C, 1, 1]
-        # Add to Gaussian noise
-        x = torch.randn(batch_size, 3, h, w, device=self.device) + lq_mean
+        x = torch.randn(batch_size, 3, h, w, device=self.device)
 
         for _ in range(self.test_steps):
             # Predict noise
             model_input = torch.cat([x, lq], dim=1)
             predicted_noise = model(model_input)
 
-            # Update rule: subtract a fraction of predicted noise
-            x = x - self.test_step_size * predicted_noise
+            # Update rule: subtract a fraction of predicted noise and scale back up
+            x = (x - self.test_step_size * predicted_noise) / (1-self.test_step_size)
 
         # Optionally clamp to [0,1] if your model outputs images in that range
         return torch.clamp(x, 0, 1)

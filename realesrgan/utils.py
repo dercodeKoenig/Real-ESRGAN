@@ -484,56 +484,13 @@ class RealESRDiffuser(RealESRGANerV2):
 
         batch_size, _, h, w = lq.shape
 
-        if self.noise_img is not None:
-
-            self.noise_img = cv2.cvtColor(self.noise_img, cv2.COLOR_BGR2RGB)
-
-            while np.max(self.noise_img) > 1:  # scale down
-                self.noise_img = self.noise_img / 255
-
-            x = torch.from_numpy(np.transpose(self.noise_img, (2, 0, 1))).float()
-            x = x.unsqueeze(0).to(self.device)
-
-            # pre_pad
-            if self.pre_pad != 0:
-                x = F.pad(x, (self.pre_pad, self.pre_pad, self.pre_pad, self.pre_pad), 'reflect').float()
-
-            # mod pad for divisible borders
-
-            mod_scale = 4
-            mod_pad_h, mod_pad_w = 0, 0
-            _, _, h, w = x.size()
-            if h % mod_scale != 0:
-                mod_pad_h = (mod_scale - h % mod_scale)
-            if w % mod_scale != 0:
-                mod_pad_w = (mod_scale - w % mod_scale)
-            x = F.pad(x, (0, mod_pad_w, 0, mod_pad_h), 'reflect')
-
-            _, _, h, w = x.size()
-            if self.compiled_model is not None and h * w > self.compile_res_min and self.allowed_compile_resolutions is not None:
-                # Fixed resolution padding
-                b, c, h, w = x.size()
-
-                res = find_best_resolution(w, h, self.allowed_compile_resolutions)
-                if res is None:
-                    raise "error could not find matching resolution"
-                target_resolution, (pad_left, pad_right, pad_top, pad_bottom) = res
-                x = torch.nn.functional.pad(x, (pad_left, pad_right, pad_top, pad_bottom), 'reflect')
-        else:
-            # Compute mean color per image
-            lq_mean = lq.mean(dim=[2,3], keepdim=True)  # shape [B, C, 1, 1]
-            # Add to Gaussian noise
-            x = torch.randn(batch_size, 3, h, w, device=self.device) + lq_mean
+        x = torch.randn(batch_size, 3, h, w, device=self.device)
 
         for _ in range(self.steps):
-            # Predict noise
             model_input = torch.cat([x, lq], dim=1)
             predicted_noise = model(model_input)
-
-            # Update rule: subtract a fraction of predicted noise
-            x = x - self.step_size * predicted_noise
-
-        # Optionally clamp to [0,1] if your model outputs images in that range
+            x = (x - self.step_size * predicted_noise) / (1-self.step_size)
+        
         return torch.clamp(x, 0, 1)
 
 
@@ -555,10 +512,10 @@ class RealESRDiffuser(RealESRGANerV2):
 
 
     @torch.no_grad()
-    def enhance(self, imgBGR_BGRA, noise_img=None, alpha_upsampler=None, outscale=None):
+    def enhance(self, imgBGR_BGRA, alpha_upsampler=None, outscale=None):
         if alpha_upsampler is not None:
             print("Alpha channel will always use interpolation no matter what you say!")
-        self.noise_img = noise_img
+
         return super().enhance(imgBGR_BGRA, alpha_upsampler='', outscale=outscale)
 
 class PrefetchReader(threading.Thread):

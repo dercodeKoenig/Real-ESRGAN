@@ -83,7 +83,7 @@ network_g:
   num_out_ch: 3
   highway_channels: 192
   processing_channels: 64
-  num_block: 32
+  num_block: 8
   num_grow_ch: 32
   num_pre_upscale_ch: 256
   scale: 1 # scale will be dynamic, input should have same resolution as output
