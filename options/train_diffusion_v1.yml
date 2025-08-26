@@ -61,8 +61,8 @@ datasets:
 
     # data loader
     use_shuffle: true
-    num_worker_per_gpu: 8
-    batch_size_per_gpu: 16
+    num_worker_per_gpu: 2
+    batch_size_per_gpu: 8
     dataset_enlarge_ratio: 1
     prefetch_mode: ~
 
@@ -81,11 +81,11 @@ network_g:
   type: RRDBNet_v3
   num_in_ch: 6
   num_out_ch: 3
-  highway_channels: 64
-  processing_channels: 32
-  num_block: 8
+  highway_channels: 192
+  processing_channels: 64
+  num_block: 32
   num_grow_ch: 32
-  num_pre_upscale_ch: 64
+  num_pre_upscale_ch: 256
   scale: 1 # scale will be dynamic, input should have same resolution as output
   use_attention: true
 
@@ -107,7 +107,7 @@ train:
   ema_decay: 0.999
   optim_g:
     type: Adam
-    lr: 0.0001
+    lr: 0.0005
     weight_decay: 0
     betas: [0.9, 0.99]
 
