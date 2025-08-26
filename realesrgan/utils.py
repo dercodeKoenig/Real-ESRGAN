@@ -485,6 +485,9 @@ class RealESRDiffuser(RealESRGANerV2):
         batch_size, _, h, w = lq.shape
 
         if self.noise_img is not None:
+
+            self.noise_img = cv2.cvtColor(self.noise_img, cv2.COLOR_BGR2RGB)
+
             while np.max(self.noise_img) > 1:  # scale down
                 self.noise_img = self.noise_img / 255
 
