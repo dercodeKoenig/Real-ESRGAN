@@ -368,7 +368,7 @@ class RealESRGANerV2():
 
             # Apply resolution padding (left, right, top, bottom)
             self.compile_resolution_pad = (pad_left, pad_right, pad_top, pad_bottom)
-            self.img = torch.nn.functional.pad(img, self.compile_resolution_pad, 'reflect')
+            self.img = torch.nn.functional.pad(self.img, self.compile_resolution_pad, 'reflect')
 
     def process(self):
         # model inference
@@ -484,9 +484,35 @@ class RealESRDiffuser(RealESRGANerV2):
 
         batch_size, _, h, w = lq.shape
 
-        if self.input_img is not None:
+        if self.noise_img is not None:
             x = torch.from_numpy(np.transpose(self.input_img, (2, 0, 1))).float()
             x = x.unsqueeze(0).to(self.device)
+
+            # pre_pad
+            if self.pre_pad != 0:
+                x = F.pad(x, (self.pre_pad, self.pre_pad, self.pre_pad, self.pre_pad), 'reflect').float()
+
+            # mod pad for divisible borders
+
+            mod_scale = 4
+            mod_pad_h, mod_pad_w = 0, 0
+            _, _, h, w = x.size()
+            if h % mod_scale != 0:
+                mod_pad_h = (mod_scale - h % mod_scale)
+            if w % mod_scale != 0:
+                mod_pad_w = (mod_scale - w % mod_scale)
+            x = F.pad(x, (0, mod_pad_w, 0, mod_pad_h), 'reflect')
+
+            _, _, h, w = x.size()
+            if self.compiled_model is not None and h * w > self.compile_res_min and self.allowed_compile_resolutions is not None:
+                # Fixed resolution padding
+                b, c, h, w = x.size()
+
+                res = find_best_resolution(w, h, self.allowed_compile_resolutions)
+                if res is None:
+                    raise "error could not find matching resolution"
+                target_resolution, (pad_left, pad_right, pad_top, pad_bottom) = res
+                x = torch.nn.functional.pad(x, (pad_left, pad_right, pad_top, pad_bottom), 'reflect')
         else:
             x = torch.randn(batch_size, 3, h, w, device=self.device)
 
@@ -520,10 +546,10 @@ class RealESRDiffuser(RealESRGANerV2):
 
 
     @torch.no_grad()
-    def enhance(self, imgBGR_BGRA, input_img=None, alpha_upsampler=None, outscale=None):
+    def enhance(self, imgBGR_BGRA, noise_img=None, alpha_upsampler=None, outscale=None):
         if alpha_upsampler is not None:
             print("Alpha channel will always use interpolation no matter what you say!")
-        self.input_img = input_img
+        self.noise_img = noise_img
         return super().enhance(imgBGR_BGRA, alpha_upsampler='', outscale=outscale)
 
 class PrefetchReader(threading.Thread):
