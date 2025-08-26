@@ -486,9 +486,9 @@ class RealESRDiffuser(RealESRGANerV2):
 
         if self.noise_img is not None:
             if np.max(self.noise_img) > 256:  # 16-bit image
-                self.noise_img /= 
-            else:
-                max_range = 255
+                self.noise_img = self.noise_img /  65535
+            if np.max(self.noise_img) > 1:  # scale down
+                self.noise_img = self.noise_img / 255
 
             x = torch.from_numpy(np.transpose(self.noise_img, (2, 0, 1))).float()
             x = x.unsqueeze(0).to(self.device)
