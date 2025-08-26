@@ -3,7 +3,19 @@ from torch import nn as nn
 from torch.nn import functional as F
 from torch.nn.utils import spectral_norm
 
-
+# Define residual block
+class ResBlock(nn.Module):
+    def __init__(self, channels):
+        super().__init__()
+        self.conv1 = spectral_norm(nn.Conv2d(channels, channels, 3, 1, 1, bias=False))
+        self.conv2 = spectral_norm(nn.Conv2d(channels, channels, 3, 1, 1, bias=False))
+    
+    def forward(self, x):
+        residual = x
+        x = F.leaky_relu(self.conv1(x), negative_slope=0.2, inplace=True)
+        x = F.leaky_relu(self.conv2(x), negative_slope=0.2, inplace=True)
+        return x + residual
+        
 @ARCH_REGISTRY.register()
 class UNetDiscriminatorSN2(nn.Module):
     """Defines a U-Net discriminator with spectral normalization (SN)
@@ -28,6 +40,10 @@ class UNetDiscriminatorSN2(nn.Module):
         self.conv3 = norm(nn.Conv2d(num_feat * 4, num_feat * 8, 4, 2, 1, bias=False))
         self.conv3_1 = norm(nn.Conv2d(num_feat * 8, num_feat * 8, 4, 2, 1, bias=False))
         self.conv3_2 = norm(nn.Conv2d(num_feat * 8, num_feat * 8, 4, 2, 1, bias=False))
+
+        self.res_block_1 = ResBlock(num_feat)
+        self.res_block_2 = ResBlock(num_feat * 2)
+        self.res_block_3 = ResBlock(num_feat * 4)
         
         # Decoder
         self.conv3_up2 = norm(nn.Conv2d(num_feat * 8, num_feat * 8, 3, 1, 1, bias=False))
@@ -68,16 +84,19 @@ class UNetDiscriminatorSN2(nn.Module):
         up = F.leaky_relu(self.conv4(up), negative_slope=0.2, inplace=True)
         if self.skip_connection:
             up = up + x2
+        up = self.res_block_3(up)
             
         up = F.interpolate(up, scale_factor=2, mode='bilinear', align_corners=False)
         up = F.leaky_relu(self.conv5(up), negative_slope=0.2, inplace=True)
         if self.skip_connection:
             up = up + x1
+        up = self.res_block_2(up)
             
         up = F.interpolate(up, scale_factor=2, mode='bilinear', align_corners=False)
         up = F.leaky_relu(self.conv6(up), negative_slope=0.2, inplace=True)
         if self.skip_connection:
             up = up + x0
+        up = self.res_block_1(up)
         
         # Output
         out = F.leaky_relu(self.conv7(up), negative_slope=0.2, inplace=True)
