@@ -71,6 +71,7 @@ class RealESRGANer():
 
         self.model = model
         self.model.eval()
+        self.model.to(self.device)
         if self.half:
             self.model = self.model.half()
 
@@ -218,7 +219,6 @@ class RealESRGANer():
         # ------------------- process image (without the alpha channel) ------------------- #
         self.pre_process(img)
 
-        self.model.to(self.device)
         if self.tile_size > 0:
             self.tile_process()
         else:
@@ -254,8 +254,6 @@ class RealESRGANer():
             output = (output_img * 65535.0).round().astype(np.uint16)
         else:
             output = (output_img * 255.0).round().astype(np.uint8)
-
-        self.model.to("cpu")
 
         if outscale is not None and outscale != float(self.scale):
             output = cv2.resize(
@@ -318,9 +316,13 @@ class RealESRGANerV2():
         model.load_state_dict(loadnet[keyname], strict=True)
         model.eval()
         self.model = model
+        self.model.to(self.device)
+
         if  compiled_model is not None:
             compiled_model.load_state_dict(loadnet[keyname], strict=True)
             compiled_model.eval()
+            compiled_model.to(self.device)
+
         self.compiled_model = compiled_model
 
 
@@ -374,17 +376,13 @@ class RealESRGANerV2():
         # model inference
         if self.should_compile:
             print("use compiled model at resolution:", self.img.size())
-            self.compiled_model.to(self.device)
             with torch.no_grad():
                 with torch.amp.autocast(self.device):
                     self.output = self.compiled_model(self.img)
-            self.compiled_model.to("cpu")
         else:
-            self.model.to(self.device)
             with torch.no_grad():
                 with torch.amp.autocast(self.device):
                     self.output = self.model(self.img)
-            self.model.to("cpu")
 
     def post_process(self):
 
@@ -471,56 +469,6 @@ class RealESRGANerV2():
         return output, img_mode
 
 
-
-class RealESRDiffuser(RealESRGANerV2):
-
-    def __init__(self, steps=1, step_size=0.1, **kwargs):
-        super().__init__(scale=1, **kwargs)  # Pass remaining args to parent
-        self.steps = steps
-        self.step_size = step_size
-
-    def sample_naive(self, lq, model):
-        """Naive denoising: iteratively subtract a fraction of predicted noise."""
-
-        batch_size, _, h, w = lq.shape
-
-        if self.noise_input is None:
-            x = torch.randn(batch_size, 3, h, w, device=self.device)
-        else:
-            x = self.noise_input
-
-        for _ in range(self.steps):
-            model_input = torch.cat([x, lq], dim=1)
-            predicted_noise = model(model_input)
-            x = (x - self.step_size * predicted_noise)
-
-        self.noise_output = x
-        return torch.clamp(x, 0, 1)
-
-
-    def process(self):
-        # model inference
-        if self.should_compile:
-            print("use compiled model at resolution:", self.img.size())
-            self.compiled_model.to(self.device)
-            with torch.no_grad():
-                with torch.amp.autocast(self.device):
-                    self.output = self.sample_naive(self.img, self.compiled_model)
-            self.compiled_model.to("cpu")
-        else:
-            self.model.to(self.device)
-            with torch.no_grad():
-                with torch.amp.autocast(self.device):
-                    self.output = self.sample_naive(self.img, self.model)
-            self.model.to("cpu")
-
-
-    @torch.no_grad()
-    def enhance(self, imgBGR_BGRA, noise_input = None, alpha_upsampler=None, outscale=None):
-        if alpha_upsampler is not None:
-            print("Alpha channel will always use interpolation no matter what you say!")
-        self.noise_input = noise_input
-        return super().enhance(imgBGR_BGRA, alpha_upsampler='', outscale=outscale)[0], self.noise_output
 
 class PrefetchReader(threading.Thread):
     """Prefetch images.
