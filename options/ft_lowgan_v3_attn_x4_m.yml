@@ -127,7 +127,7 @@ train:
       milestones: [] 
       gamma: 1.0     
 
-  total_iter: 100000
+  total_iter: 1000000
   warmup_iter: 0
   gan_warmup_iters: 0
   percept_warmup_iters: 0
