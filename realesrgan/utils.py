@@ -315,7 +315,7 @@ class RealESRGANerV2():
             keyname = 'params'
         model.load_state_dict(loadnet[keyname], strict=True)
         model.eval()
-        self.model = model
+        self.model = model.half()
         self.model.to(self.device)
 
         if  compiled_model is not None:
@@ -332,6 +332,7 @@ class RealESRGANerV2():
         """
         img = torch.from_numpy(np.transpose(img, (2, 0, 1))).float()
         self.img = img.unsqueeze(0).to(self.device)
+        self.img = self.img.half()
 
         # pre_pad
         if self.pre_pad != 0:
