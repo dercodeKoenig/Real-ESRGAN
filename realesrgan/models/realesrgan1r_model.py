@@ -32,8 +32,8 @@ class RealESRGANModel1R(SRGANModel):
 
         #self.net_g.compile(mode="max-autotune", dynamic=False, fullgraph=True)
         #self.net_d.compile(mode="max-autotune", dynamic=False, fullgraph =True)
-        #self.net_g.compile(dynamic=False, fullgraph=True)
-        #self.net_d.compile(dynamic=False, fullgraph=True)  # i use this bc autotune needs me to reduce batch size from 8 to 7
+        self.net_g.compile(dynamic=False, fullgraph=True)
+        self.net_d.compile(dynamic=False, fullgraph=True)  # i use this bc autotune needs me to reduce batch size from 8 to 7
 
         self.jpeger = DiffJPEG(differentiable=False).cuda()  # simulate JPEG compression artifacts
         self.usm_sharpener = USMSharp().cuda()  # do usm sharpening
@@ -345,6 +345,5 @@ class RealESRGANModel1R(SRGANModel):
             self.log_dict = self.reduce_loss_dict(loss_dict)
 
             # --- 4. Feed generator output as new LQ for next refinement ---
-            if refine_step < num_refine - 1:
-                self.lq = self.output.detach()  # use model output as next input
+            self.lq = self.output.detach()  # use model output as next input
 
