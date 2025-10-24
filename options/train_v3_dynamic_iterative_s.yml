@@ -1,0 +1,207 @@
+# general settings
+name: train_v3_dynamic_iterative_s
+model_type: RealESRGANModel1R
+num_gpu: auto  # auto: can infer from your visible devices automatically. official: 4 GPUs
+scale: 4 # used in validation
+manual_seed: 
+
+# ----------------- options for synthesizing training data in RealESRGANModel ----------------- #
+# USM the ground-truth
+l1_gt_usm: True
+percep_gt_usm: True
+gan_gt_usm: False
+
+num_refine_steps: 3
+
+# the first degradation process
+resize_prob: [0.2, 0.7, 0.1]  # up, down, keep
+resize_range: [0.15, 1.5]
+gaussian_noise_prob: 0.5
+noise_range: [1, 30]
+poisson_scale_range: [0.05, 3]
+gray_noise_prob: 0.4
+jpeg_range: [30, 95]
+
+# the second degradation process
+second_blur_prob: 0.8
+resize_prob2: [0.3, 0.4, 0.3]  # up, down, keep
+resize_range2: [0.3, 1.2]
+gaussian_noise_prob2: 0.5
+noise_range2: [1, 25]
+poisson_scale_range2: [0.05, 2.5]
+gray_noise_prob2: 0.4
+jpeg_range2: [30, 95]
+
+gt_size: 256
+queue_size: 64
+
+# dataset and data loader settings
+datasets:
+  train:
+    name: dataset
+    type: RealESRGANDataset
+    dataroot_gt: /
+    meta_info: meta_info.txt
+    io_backend:
+      type: disk
+
+    blur_kernel_size: 21
+    kernel_list: ['iso', 'aniso', 'generalized_iso', 'generalized_aniso', 'plateau_iso', 'plateau_aniso']
+    kernel_prob: [0.45, 0.25, 0.12, 0.03, 0.12, 0.03]
+    sinc_prob: 0.1
+    blur_sigma: [0.2, 3]
+    betag_range: [0.5, 4]
+    betap_range: [1, 2]
+
+    blur_kernel_size2: 21
+    kernel_list2: ['iso', 'aniso', 'generalized_iso', 'generalized_aniso', 'plateau_iso', 'plateau_aniso']
+    kernel_prob2: [0.45, 0.25, 0.12, 0.03, 0.12, 0.03]
+    sinc_prob2: 0.1
+    blur_sigma2: [0.2, 1.5]
+    betag_range2: [0.5, 4]
+    betap_range2: [1, 2]
+
+    final_sinc_prob: 0.8
+
+    gt_size: 256
+    use_hflip: True
+    use_rot: False
+
+    # data loader
+    use_shuffle: true
+    num_worker_per_gpu: 2
+    batch_size_per_gpu: 8
+    dataset_enlarge_ratio: 1
+    prefetch_mode: ~
+
+  # Uncomment these for validation
+  val:
+     name: validation
+     type: PairedImageDataset
+     dataroot_gt: tests/data/gt
+     dataroot_lq: tests/data/lq_4
+     io_backend:
+       type: disk
+
+# network structures
+network_g:
+  type: RRDBNet_v3
+  num_in_ch: 3
+  num_out_ch: 3
+  highway_channels: 32
+  processing_channels: 16
+  num_block: 8
+  num_grow_ch: 16
+  num_pre_upscale_ch: 128
+  scale: 1
+  use_attention: true
+
+network_d:
+  type: UNetDiscriminatorSN
+  num_in_ch: 3
+  num_feat: 32
+  skip_connection: True
+
+# path
+path:
+  pretrain_network_g:
+  pretrain_network_d:
+  param_key_g: params_ema
+  strict_load_g: true
+  resume_state: 
+
+# training settings
+train:
+  ema_decay: 0.999
+  optim_g:
+    type: Adam
+    lr: 0.00005
+    weight_decay: 0
+    betas: [0.9, 0.99]
+  optim_d:
+    type: Adam
+    lr: 0.00005
+    weight_decay: 0
+    betas: [0.9, 0.99]
+
+  scheduler:
+      type: MultiStepLR
+      milestones: [] 
+      gamma: 1.0     
+
+  total_iter: 1000000
+  warmup_iter: 10000
+  gan_warmup_iters: 100000
+  percept_warmup_iters: 5000
+  min_scale: 2
+  max_scale: 6
+
+
+  # losses
+  pixel_opt:
+    type: L1Loss
+    loss_weight: 1.0
+    reduction: mean
+  # perceptual loss (content and style losses)
+  perceptual_opt:
+    type: PerceptualLoss
+    layer_weights:
+      # before relu
+      'conv1_2': 0.1
+      'conv2_2': 0.1
+      'conv3_4': 1
+      'conv4_4': 1
+      'conv5_4': 1
+    vgg_type: vgg19
+    use_input_norm: true
+    perceptual_weight: 0.3125
+    style_weight: 0
+    range_norm: false
+    criterion: l1
+  # gan loss
+  gan_opt:
+    type: GANLoss
+    gan_type: vanilla
+    real_label_val: 1.0
+    fake_label_val: 0.0
+    loss_weight: 0.1
+
+  # Adaptive discriminator training
+  d_loss_threshold: 0.6   # Adjust based on your typical D loss values
+  d_slow_iters: 11        # Update D every x steps when loss < threshold ( it will still skip the update if total loss is < 50% of the threshold )
+  d_normal_iters: 1       # update d if steps % d_normal_iters == 0
+
+# Uncomment these for validation
+# validation settings
+val:
+   val_freq: 500
+   save_img: True
+
+   metrics:
+     psnr: # metric name
+       type: calculate_psnr
+       crop_border: 4
+       test_y_channel: false
+     ssim: 
+       type: calculate_ssim
+       crop_border: 4
+       test_y_channel: false
+     niqe:
+         type: calculate_niqe
+         crop_border: 4
+         better: lower 
+
+
+# logging settings
+logger:
+  print_freq: 500
+  save_checkpoint_freq: 5000
+  use_tb_logger: true
+  wandb:
+    project: ~
+    resume_id: ~
+
+# dist training settings
+dist_params:
+  backend: nccl
+  port: 29500
