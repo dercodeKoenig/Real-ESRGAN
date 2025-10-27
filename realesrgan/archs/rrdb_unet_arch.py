@@ -106,85 +106,87 @@ class HighwayRRDB(nn.Module):
 @ARCH_REGISTRY.register()
 class RRDB_UNet(nn.Module):
 
-    def __init__(self, num_in_ch, num_out_ch, highway_channels=32, processing_channels=16, num_blocks=4,
-                 num_downscales=4, num_grow_ch=8, use_attention=True, downscale_channel_growth=2, body_rrdb_blocks=12):
+    def __init__(self, num_in_ch, num_out_ch, highway_channels_base=32, processing_channels_base=16, num_grow_ch_base=8,
+                 ae_rrdb_blocks=4, ae_channel_multipliers = [1,2,4,8,16],use_attention=True, body_rrdb_blocks=12):
+        
         super(RRDB_UNet, self).__init__()
 
-        self.w_h_multiple = 2 ** num_downscales
+        print("highway_channels_base", highway_channels_base)
+        print("processing_channels_base", processing_channels_base)
+        print("num_grow_ch_base", num_grow_ch_base)
+        print("ae_rrdb_blocks", ae_rrdb_blocks)
+        print("ae_channel_multipliers", ae_channel_multipliers)
+        print("use_attention", use_attention)
+        print("body_rrdb_blocks", body_rrdb_blocks)
 
-        self.highway_channels = highway_channels
+        self.w_h_multiple = 2 ** len(ae_channel_multipliers)
 
         # create encoder
         self.encoder = nn.ModuleList()
-        self.encoder.append(nn.Conv2d(num_in_ch, highway_channels, 3, 1, 1))  # get the rdb to initial channel num
+        self.encoder.append(nn.Conv2d(num_in_ch, highway_channels_base * ae_channel_multipliers[0], 3, 1, 1))  # get the image to initial channel num
         self.encoder.append(nn.LeakyReLU(negative_slope=0.01, inplace=True))
-        for d in range(num_downscales):
-            new_c_multiplier = (downscale_channel_growth ** d)  # increase channels while downscale
-
+        for i in range(len(ae_channel_multipliers)-1):
+            current_multiplier = ae_channel_multipliers[i]
+            next_multiplier = ae_channel_multipliers[i+1]
             ## rrdbs
-            for _ in range(num_blocks):
+            for _ in range(ae_rrdb_blocks):
                 self.encoder.append(
                     HighwayRRDB(
-                        highway_channels=highway_channels * new_c_multiplier,
-                        processing_channels=processing_channels * new_c_multiplier,
-                        num_grow_ch=num_grow_ch * new_c_multiplier,
+                        highway_channels=highway_channels_base * current_multiplier,
+                        processing_channels=processing_channels_base * current_multiplier,
+                        num_grow_ch=num_grow_ch_base * current_multiplier,
                         use_attention=use_attention
                     )
                 )
-                ## pixelUnShuffle & channel match for next block
+            ## pixelUnShuffle & channel match for next block
             self.encoder.append(nn.PixelUnshuffle(2))
-            self.encoder.append(nn.Conv2d(highway_channels * new_c_multiplier * 4,
-                                          highway_channels * new_c_multiplier * downscale_channel_growth, 3, 1,
-                                          1))  # from 4x pixelUnShuffle channel growth to downscale_channel_growth for the next encoder block
+            self.encoder.append(nn.Conv2d(highway_channels_base * current_multiplier * 4, highway_channels_base * next_multiplier, 3, 1,1))  # from 4x pixelUnShuffle channel growth to target channels for the next encoder block
             self.encoder.append(nn.LeakyReLU(negative_slope=0.01, inplace=True))
 
         ## between encoder / decoder perform some crazy number crunching
-        body_channel_multiplier = (downscale_channel_growth ** num_downscales)
+        body_channel_multiplier = ae_channel_multipliers[-1]
         self.body = nn.ModuleList()
         for _ in range(body_rrdb_blocks):
             self.body.append(
                 HighwayRRDB(
-                    highway_channels=highway_channels * body_channel_multiplier,
-                    processing_channels=processing_channels * body_channel_multiplier,
-                    num_grow_ch=num_grow_ch * body_channel_multiplier,
+                    highway_channels=highway_channels_base * body_channel_multiplier,
+                    processing_channels=processing_channels_base * body_channel_multiplier,
+                    num_grow_ch=num_grow_ch_base * body_channel_multiplier,
                     use_attention=use_attention
                 )
             )
 
             # create decoder
         self.decoder = nn.ModuleList()
-        for d in range(num_downscales):
-            d = num_downscales - d - 1  # inverse now
-
-            new_c_multiplier = (downscale_channel_growth ** d)  # decrease channels while upscale
+        for i in range(len(ae_channel_multipliers)-1):
+            current_multiplier = ae_channel_multipliers[len(ae_channel_multipliers)-2-i]
+            last_multiplier = ae_channel_multipliers[len(ae_channel_multipliers)-1-i]
 
             ## pixelShuffle input up
-            input_channels_multiplier = (downscale_channel_growth ** (d + 1))
             self.decoder.append(nn.PixelShuffle(2))
-            self.decoder.append(
-                nn.Conv2d(highway_channels * input_channels_multiplier // 4, highway_channels * new_c_multiplier, 3, 1,
-                          1))  # from 1/4x pixelShuffle channel growth to 1/downscale_channel_growth for the next decoder block
+            self.decoder.append(nn.Conv2d(highway_channels_base * last_multiplier // 4, highway_channels_base * current_multiplier, 3, 1, 1))  # from 1/4x pixelShuffle channel growth to target channels for the current decoder block
             self.decoder.append(nn.LeakyReLU(negative_slope=0.01, inplace=True))
 
             ## rrdbs
-            for _ in range(num_blocks):
+            for _ in range(ae_rrdb_blocks):
                 self.decoder.append(
                     HighwayRRDB(
-                        highway_channels=highway_channels * new_c_multiplier,
-                        processing_channels=processing_channels * new_c_multiplier,
-                        num_grow_ch=num_grow_ch * new_c_multiplier,
+                        highway_channels=highway_channels_base * current_multiplier,
+                        processing_channels=processing_channels_base * current_multiplier,
+                        num_grow_ch=num_grow_ch_base * current_multiplier,
                         use_attention=use_attention
                     )
                 )
 
                 # final cnns
-        self.decoder.append(nn.Conv2d(highway_channels, highway_channels, 3, 1, 1))
+        base_multiplier = ae_channel_multipliers[0] # usually 1
+        self.decoder.append(nn.Conv2d(highway_channels_base*base_multiplier, highway_channels_base*base_multiplier, 3, 1, 1))
         self.decoder.append(nn.LeakyReLU(negative_slope=0.01, inplace=True))
 
-        self.decoder.append(nn.Conv2d(highway_channels, highway_channels, 3, 1, 1))
+        self.decoder.append(nn.Conv2d(highway_channels_base*base_multiplier, highway_channels_base*base_multiplier, 3, 1, 1))
         self.decoder.append(nn.LeakyReLU(negative_slope=0.01, inplace=True))
 
-        self.decoder.append(nn.Conv2d(highway_channels, num_out_ch, 1, 1, 0))
+        self.decoder.append(nn.Conv2d(highway_channels_base*base_multiplier, num_out_ch, 1, 1, 0))
 
     def forward(self, x):
         B, C, H, W = x.shape

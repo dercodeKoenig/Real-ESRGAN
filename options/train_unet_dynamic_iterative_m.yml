@@ -70,7 +70,7 @@ datasets:
     # data loader
     use_shuffle: true
     num_worker_per_gpu: 1
-    batch_size_per_gpu: 2
+    batch_size_per_gpu: 4
     dataset_enlarge_ratio: 1
     prefetch_mode: ~
 
@@ -88,13 +88,12 @@ network_g:
   type: RRDB_UNet
   num_in_ch: 3
   num_out_ch: 3
-  highway_channels: 32
-  processing_channels: 16
-  num_blocks: 4
-  num_grow_ch: 8
+  highway_channels_base: 24
+  processing_channels_base: 12
+  num_grow_ch_base: 6
+  ae_rrdb_blocks: 3
+  ae_channel_multipliers: [1,2,4,12,36]
   use_attention: true
-  num_downscales: 4
-  downscale_channel_growth: 3
   body_rrdb_blocks: 12
 
 network_d:
