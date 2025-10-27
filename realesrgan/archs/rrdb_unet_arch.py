@@ -110,7 +110,7 @@ class RRDB_UNet(nn.Module):
                  num_downscales=4, num_grow_ch=8, use_attention=True, downscale_channel_growth=2, body_rrdb_blocks=12):
         super(RRDB_UNet, self).__init__()
 
-        self.w_h_multiple = downscale_channel_growth ** num_downscales
+        self.w_h_multiple = 2 ** num_downscales
 
         self.highway_channels = highway_channels
 
