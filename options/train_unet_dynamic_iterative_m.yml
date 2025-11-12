@@ -11,7 +11,7 @@ l1_gt_usm: True
 percep_gt_usm: True
 gan_gt_usm: False
 
-num_refine_steps: 3 # use the output as lq and train to predict gt from the previous output for x-1 times
+num_refine_steps: 2 # use the output as lq and train to predict gt from the previous output for x-1 times
 
 # the first degradation process
 resize_prob: [0.2, 0.7, 0.1]  # up, down, keep
