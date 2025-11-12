@@ -31,6 +31,7 @@ class RealESRGANModel1R(SRGANModel):
         super(RealESRGANModel1R, self).__init__(opt)
 
         if(opt['train'].get("use_compile", True)):
+            print("using model compile")
             #self.net_g.compile(mode="max-autotune", dynamic=False, fullgraph=True)
             #self.net_d.compile(mode="max-autotune", dynamic=False, fullgraph =True)
             self.net_g.compile(dynamic=False)
