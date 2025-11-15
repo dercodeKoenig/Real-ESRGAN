@@ -180,13 +180,15 @@ class RRDB_UNet(nn.Module):
 
                 # final cnns
         base_multiplier = ae_channel_multipliers[0] # usually 1
-        self.decoder.append(nn.Conv2d(highway_channels_base*base_multiplier, highway_channels_base*base_multiplier, 3, 1, 1))
+        final_ch = (processing_channels_base+highway_channels_base)*base_multiplier
+        
+        self.decoder.append(nn.Conv2d(highway_channels_base*base_multiplier, final_ch, 3, 1, 1))
         self.decoder.append(nn.LeakyReLU(negative_slope=0.01, inplace=True))
 
-        self.decoder.append(nn.Conv2d(highway_channels_base*base_multiplier, highway_channels_base*base_multiplier, 3, 1, 1))
+        self.decoder.append(nn.Conv2d(final_ch, final_ch, 3, 1, 1))
         self.decoder.append(nn.LeakyReLU(negative_slope=0.01, inplace=True))
 
-        self.decoder.append(nn.Conv2d(highway_channels_base*base_multiplier, num_out_ch, 1, 1, 0))
+        self.decoder.append(nn.Conv2d(final_ch, num_out_ch, 1, 1, 0))
 
     def forward(self, x):
         B, C, H, W = x.shape
