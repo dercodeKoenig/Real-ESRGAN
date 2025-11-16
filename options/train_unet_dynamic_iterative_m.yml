@@ -33,7 +33,7 @@ gray_noise_prob2: 0.4
 jpeg_range2: [30, 95]
 
 gt_size: 512
-queue_size: 96
+queue_size: 32
 
 # dataset and data loader settings
 datasets:
@@ -94,12 +94,12 @@ network_g:
   ae_rrdb_blocks: 3
   ae_channel_multipliers: [1,2,4,12,36]
   use_attention: true
-  body_rrdb_blocks: 12
+  body_rrdb_blocks: 16
 
 network_d:
   type: UNetDiscriminatorSN
   num_in_ch: 3
-  num_feat: 32
+  num_feat: 64
   skip_connection: True
 
 # path
