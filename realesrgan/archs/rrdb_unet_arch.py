@@ -210,6 +210,9 @@ class RRDB_UNet(nn.Module):
         for element in self.encoder:
             feat = element(feat)
 
+        # add a little noise
+        feat = feat + (torch.rand_like(feat) * 2 - 1) * 0.05
+        
         for element in self.body:
             feat = element(feat)
 
