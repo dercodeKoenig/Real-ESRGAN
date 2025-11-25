@@ -1,5 +1,5 @@
 # general settings
-name: train_unet_dynamic_iterative_xs
+name: train_unet_dynamic_iterative_res_xs
 model_type: RealESRGANModel1R
 num_gpu: auto
 scale: 4 # used in validation ( i guess )
@@ -85,7 +85,7 @@ datasets:
 
 # network structures
 network_g:
-  type: RRDB_UNet
+  type: RRDB_UNet_res
   num_in_ch: 3
   num_out_ch: 3
   highway_channels_base: 24
