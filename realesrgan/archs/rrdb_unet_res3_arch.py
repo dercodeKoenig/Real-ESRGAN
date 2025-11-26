@@ -286,11 +286,13 @@ class RRDB_UNet_res3(nn.Module):
                 pbar.update(1)
                 torch.cuda.empty_cache() # because the residual was deleted, free up the gpu memory
 
-        # Instead of adding the original image at the very end, we concatenate features + img here
+        # Instead of just adding the original image at the very end, we concatenate features + img here so that it can do some final refinement with consideration of the original image
         feat = torch.cat([feat, res1], dim=1)
 
         # Run the refinement tail
         feat = self.tail(feat)
+
+        feat = feat + res1 # and also add the original image at the end back so it only needs to learn the difference
 
         if(self.inference):
                 pbar.update(1)
