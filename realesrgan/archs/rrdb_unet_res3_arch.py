@@ -103,8 +103,8 @@ class HighwayRRDB(nn.Module):
         else:
             # Inference: do it in-place to save VRAM, very important for processing large images!
             expanded.mul_(0.2)
-            highway_features.add_(expanded)
-            return highway_features
+            expanded.add_(highway_features) # dont modify highway_features, it might be used elsewhere. but expanded is no longer used so it can modify inplace
+            return expanded
 
 
 @ARCH_REGISTRY.register()
