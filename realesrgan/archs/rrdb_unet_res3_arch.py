@@ -80,10 +80,10 @@ class HighwayRRDB(nn.Module):
 
     def forward(self, highway_features):
         # Compress highway features for processing
-        compressed = self.lrelu(self.compress(highway_features))
+        processed = self.lrelu(self.compress(highway_features))
 
         # Dense processing
-        processed = self.rdb1(compressed)
+        processed = self.rdb1(processed)
         processed = self.rdb2(processed)
         processed = self.rdb3(processed)
 
