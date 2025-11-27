@@ -111,11 +111,12 @@ class HighwayRRDB(nn.Module):
 class RRDB_UNet_res3(nn.Module):
 
     def __init__(self, num_in_ch, num_out_ch, highway_channels_base=32, processing_channels_base=16, num_grow_ch_base=8,
-                 ae_rrdb_blocks=4, ae_channel_multipliers = [1,2,4,8,16],use_attention=True, body_rrdb_blocks=12, inference = False):
+                 ae_rrdb_blocks=4, ae_channel_multipliers = [1,2,4,8,16],use_attention=True, body_rrdb_blocks=12, inference = False, body_cpu_offload_min_res = 6000*6000):
         
         super(RRDB_UNet_res3, self).__init__()
 
         self.inference = inference
+        self.body_cpu_offload_min_res = body_cpu_offload_min_res # unloads the large body to cpu during AE high resolution processing to make room for the feature maps
 
         print("highway_channels_base", highway_channels_base)
         print("processing_channels_base", processing_channels_base)
@@ -222,8 +223,8 @@ class RRDB_UNet_res3(nn.Module):
             nn.LeakyReLU(negative_slope=0.01, inplace=True),
             nn.Conv2d(final_inner_ch, num_out_ch, 1, 1, 0)
         )
-    
 
+        
     def forward(self, x):
         B, C, H, W = x.shape
 
@@ -249,6 +250,16 @@ class RRDB_UNet_res3(nn.Module):
         
         res1 = feat
 
+        # unload body weights to cpu during encoder/decoder to make room for high resolution feature maps on 8k images
+        body_offload = self.inference and self.body_cpu_offload_min_res <= B*H*W
+        body_original_device = next(self.body.parameters()).device
+        
+        if(body_offload):
+            print("unloading body to cpu before running encoder", end = "...")
+            self.body.to("cpu")
+            torch.cuda.empty_cache()
+            print(" ok!")
+
         for element in self.prep:
             feat = element(feat)
 
@@ -266,6 +277,12 @@ class RRDB_UNet_res3(nn.Module):
         # add a little noise because 1 lr can have many hr and this should avoid it predicting average
         # TODO: maybe use concat and not add to give model controll over how to use it?
         feat = feat + (torch.rand_like(feat) * 2 - 1) * 0.01
+
+        if(body_offload):
+            print("moving body back to device before execution:", body_original_device, end="...")
+            self.body.to(body_original_device)
+            torch.cuda.empty_cache()
+            print(" ok!")
         
         for element in self.body:
             feat = element(feat)
@@ -274,6 +291,13 @@ class RRDB_UNet_res3(nn.Module):
                 pbar.update(1)
 
 
+        if(body_offload):
+            print("unloading body to cpu before running decoder", end = "...")
+            self.body.to("cpu")
+            torch.cuda.empty_cache()
+            print(" ok!")
+
+                
         # run through decoder and insert residuals
         for decoder_block in self.decoder:
             
@@ -297,6 +321,12 @@ class RRDB_UNet_res3(nn.Module):
 
         if(self.inference):
                 pbar.update(1)
+
+        if(body_offload):
+            print("moving body back to restore original state:", body_original_device, end="...")
+            self.body.to(body_original_device)
+            torch.cuda.empty_cache()
+            print(" ok!")
 
         # crop back to original size
         feat = feat[:, :, pad_top:pad_top + H, pad_left:pad_left + W]
