@@ -264,6 +264,7 @@ class RRDB_UNet_res3(nn.Module):
             
 
         # add a little noise because 1 lr can have many hr and this should avoid it predicting average
+        # TODO: maybe use concat and not add to give model controll over how to use it?
         feat = feat + (torch.rand_like(feat) * 2 - 1) * 0.01
         
         for element in self.body:
