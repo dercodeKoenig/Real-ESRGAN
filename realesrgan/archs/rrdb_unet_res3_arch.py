@@ -125,7 +125,7 @@ class RRDB_UNet_res3(nn.Module):
         print("use_attention", use_attention)
         print("body_rrdb_blocks", body_rrdb_blocks)
 
-        self.w_h_multiple = 2 ** len(ae_channel_multipliers)
+        self.w_h_multiple = 2 ** (len(ae_channel_multipliers)-1)
 
         self.prep = nn.ModuleList()
         self.prep.append(nn.Conv2d(num_in_ch, highway_channels_base * ae_channel_multipliers[0], 3, 1, 1))  # get the image to initial channel num
