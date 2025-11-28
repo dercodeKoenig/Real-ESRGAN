@@ -57,6 +57,9 @@ class RealESRGANModel1R(SRGANModel):
         self.gan_warmup_iters = opt['train'].get('gan_warmup_iters', 0)  # warmup steps before gan training
         self.percept_warmup_iters = opt['train'].get('percept_warmup_iters', 0)  # warmup steps before adding vgg loss
 
+        self.gradient_accumulation_steps = opt['train'].get('gradient_accumulation_steps', 1)
+        print("gradient_accumulation_steps:",  self.gradient_accumulation_steps)
+
         # Track discriminator update counter and cached values
         self.cached_d_loss_value = float('inf')  # Initialize with high value to ensure first update
 
@@ -258,7 +261,7 @@ class RealESRGANModel1R(SRGANModel):
             # --- 2. freeze discriminator and optimize generator ---
             for p in self.net_d.parameters():
                 p.requires_grad = False
-            self.optimizer_g.zero_grad()
+            
 
             with autocast('cuda'):
                 self.output = self.net_g(self.lq)
@@ -300,10 +303,12 @@ class RealESRGANModel1R(SRGANModel):
                 else:
                     loss_dict['l_g_gan'] = torch.tensor(0.0, device='cuda')
 
-            # backward and update
-            self.scaler_g.scale(l_g_total).backward()
-            self.scaler_g.step(self.optimizer_g)
-            self.scaler_g.update()
+            # Backward pass & optimizer step outside autocast
+            self.scaler_g.scale(l_g_total / self.gradient_accumulation_steps).backward()
+            if current_iter % self.gradient_accumulation_steps == 0:
+                self.scaler_g.step(self.optimizer_g)
+                self.scaler_g.update()
+                self.optimizer_g.zero_grad()
 
             output_for_d = self.output.detach().clone()
 
