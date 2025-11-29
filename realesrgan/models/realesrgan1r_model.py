@@ -32,9 +32,9 @@ class RealESRGANModel1R(SRGANModel):
 
         if(opt['train'].get("use_compile", True)):
             print("using model compile")
-            self.net_g.compile(mode="max-autotune", dynamic=False, fullgraph=True)
+            #self.net_g.compile(mode="max-autotune", dynamic=False, fullgraph=True)
             #self.net_d.compile(mode="max-autotune", dynamic=False, fullgraph =True)
-            #self.net_g.compile(dynamic=False)
+            self.net_g.compile(dynamic=False) # unfortunately, the noise injection layer is incompatible with max-autotune
             self.net_d.compile(dynamic=False)
 
         self.jpeger = DiffJPEG(differentiable=False).cuda()  # simulate JPEG compression artifacts
