@@ -28,6 +28,7 @@ class NoiseInjectionLayer(nn.Module):
         # torch.randn_like(x) creates a tensor with the EXACT same shape as x (B, C, H, W)
         # on the same device (CPU/GPU), sampled from N(0, 1).
         noise = torch.randn_like(x)
+        noise = torch.tanh(noise*0.1)  # now bounded between -1 and 1, prevent inf, but scaled by 0.1 before to keep distribution
 
         # 2. Scale the noise by the learned weights and add to input
         return x + self.scale * noise
