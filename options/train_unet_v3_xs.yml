@@ -96,9 +96,10 @@ network_g:
   body_rrdb_blocks: 6
 
 network_d:
-  type: UNetDiscriminatorSN
+  type: AdvancedUNetDiscriminator
   num_in_ch: 3
-  num_feat: 32
+  num_feat: 64
+  depth: 5
   skip_connection: True
 
 # path
