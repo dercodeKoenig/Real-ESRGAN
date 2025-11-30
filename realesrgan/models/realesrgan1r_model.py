@@ -68,7 +68,7 @@ class RealESRGANModel1R(SRGANModel):
         print("gradient_accumulation_steps:",  self.gradient_accumulation_steps)
 
         # Track discriminator update counter and cached values
-        self.cached_d_loss_value = float('inf')  # Initialize with high value to ensure first update
+        self.cached_d_loss_value = -1
 
         # Cache tensor values instead of floats - initialize as tensors
         self.cached_d_real = torch.tensor(0.0, device='cuda')
@@ -249,7 +249,7 @@ class RealESRGANModel1R(SRGANModel):
             return False
 
         # Adaptive strategy based on cached discriminator loss from previous iteration
-        if self.cached_d_loss_value < self.d_loss_threshold:
+        if self.cached_d_loss_value < self.d_loss_threshold and self.cached_d_loss_value != -1:
             # D is too strong, update less frequently
             return current_iter % self.d_slow_iters == 0
         else:
@@ -351,7 +351,11 @@ class RealESRGANModel1R(SRGANModel):
                     self.scaler_d.step(self.optimizer_d)
                     self.scaler_d.update()
 
-                self.cached_d_loss_value = d_total_loss
+                
+                if self.cached_d_loss_value == -1:
+                        self.cached_d_loss_value = d_total_loss
+                else: # smooth update to make the decision of gan weight and if it should update d more stable and not just depend on 1 batch that has noise
+                        self.cached_d_loss_value = self.cached_d_loss_value * 0.99 + d_total_loss * 0.01
                 self.cached_d_real = l_d_real.detach()
                 self.cached_d_fake = l_d_fake.detach()
                 self.cached_out_d_real = torch.mean(real_d_pred.detach())
