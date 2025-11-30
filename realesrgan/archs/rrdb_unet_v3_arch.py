@@ -81,10 +81,18 @@ class HighwayRRDB(nn.Module):
         super(HighwayRRDB, self).__init__()
 
         self.inference = inference
-        
+
         self.highway_channels = highway_channels
         self.processing_channels = processing_channels
         self.use_attention = use_attention
+
+        # Apply parallel dilated convolutions on the compressed feature map
+        self.dc1 = nn.Conv2d(processing_channels, num_grow_ch, 3, 1, 1, dilation=1)
+        self.dc2 = nn.Conv2d(processing_channels, num_grow_ch, 3, 1, 2, dilation=2)
+        self.dc3 = nn.Conv2d(processing_channels, num_grow_ch, 3, 1, 3, dilation=3)
+        self.dc4 = nn.Conv2d(processing_channels, num_grow_ch, 3, 1, 4, dilation=4)
+        # Fusion layer to combine the outputs of the dilated convolutions
+        self.context_fusion = nn.Conv2d(num_grow_ch * 4, processing_channels, 3, 1, 1)
 
         # Compression: Highway → Processing
         self.compress = nn.Conv2d(highway_channels, processing_channels, kernel_size=1)
@@ -108,6 +116,16 @@ class HighwayRRDB(nn.Module):
     def forward(self, highway_features):
         # Compress highway features for processing
         processed = self.lrelu(self.compress(highway_features))
+
+        processed = processed + self.lrelu(self.context_fusion(torch.cat(
+            [
+                self.lrelu(self.dc1(processed)),
+                self.lrelu(self.dc2(processed)),
+                self.lrelu(self.dc3(processed)),
+                self.lrelu(self.dc4(processed))
+            ],
+            dim=1))
+        )
 
         # Dense processing
         processed = self.rdb1(processed)
@@ -135,12 +153,12 @@ class HighwayRRDB(nn.Module):
 
 
 @ARCH_REGISTRY.register()
-class RRDB_UNet_v2(nn.Module):
+class RRDB_UNet_v3(nn.Module):
 
     def __init__(self, num_in_ch, highway_channels_base=32, processing_channels_base=16, num_grow_ch_base=8,
                  ae_rrdb_blocks=4, ae_channel_multipliers = [1,2,4,8,16],use_attention=True, body_rrdb_blocks=12, inference = False, body_cpu_offload_min_res = 6000*6000):
-        
-        super(RRDB_UNet_v2, self).__init__()
+
+        super(RRDB_UNet_v3, self).__init__()
 
         self.inference = inference
         self.body_cpu_offload_min_res = body_cpu_offload_min_res # unloads the large body to cpu during AE high resolution processing to make room for the feature maps
@@ -158,13 +176,13 @@ class RRDB_UNet_v2(nn.Module):
         self.prep = nn.ModuleList()
         self.prep.append(nn.Conv2d(num_in_ch, highway_channels_base * ae_channel_multipliers[0], 3, 1, 1))  # get the image to initial channel num
         self.prep.append(nn.LeakyReLU(negative_slope=0.01, inplace=True))
-        
+
         # create encoder
         self.encoder = nn.ModuleList()
-        
+
         for i in range(len(ae_channel_multipliers)-1):
             encoder_block = nn.ModuleList()
-            
+
             current_multiplier = ae_channel_multipliers[i]
             next_multiplier = ae_channel_multipliers[i+1]
             ## rrdbs
@@ -214,7 +232,7 @@ class RRDB_UNet_v2(nn.Module):
             decoder_block.append(nn.Conv2d(highway_channels_base * last_multiplier * 2, highway_channels_base * last_multiplier, 3,1,1))
             decoder_block.append(nn.LeakyReLU(negative_slope=0.01, inplace=True))
 
-            
+
             ## pixelShuffle input up
             decoder_block.append(nn.PixelShuffle(2))
             decoder_block.append(nn.Conv2d(highway_channels_base * last_multiplier // 4, highway_channels_base * current_multiplier, 3, 1, 1))  # from 1/4x pixelShuffle channel growth to target channels for the current decoder block
@@ -236,18 +254,18 @@ class RRDB_UNet_v2(nn.Module):
                 )
             self.decoder.append(decoder_block)
 
-                
+
 
         # --- THE TAIL (Refinement) ---
         base_multiplier = ae_channel_multipliers[0]
-        
+
         # We need to calculate input channels for the tail.
         # It equals: Feature Channels + Original Image Channels (due to concatenation)
         feat_ch = highway_channels_base * base_multiplier
-        cat_ch = feat_ch + num_in_ch 
-        
+        cat_ch = feat_ch + num_in_ch
+
         final_inner_ch = (processing_channels_base + highway_channels_base) * base_multiplier
-        
+
         self.tail = nn.Sequential(
             # Note the input channels: cat_ch
             nn.Conv2d(cat_ch, final_inner_ch, 3, 1, 1),
@@ -257,7 +275,7 @@ class RRDB_UNet_v2(nn.Module):
             nn.Conv2d(final_inner_ch, num_in_ch, 1, 1, 0)
         )
 
-        
+
     def forward(self, x):
         B, C, H, W = x.shape
 
@@ -280,13 +298,13 @@ class RRDB_UNet_v2(nn.Module):
             # Create a manual progress bar
             pbar = tqdm(total=total_steps)
 
-        
+
         res1 = feat
 
         # unload body weights to cpu during encoder/decoder to make room for high resolution feature maps on 8k images
         body_offload = self.inference and self.body_cpu_offload_min_res <= B*H*W
         body_original_device = next(self.body.parameters()).device
-        
+
         if(body_offload):
             print("unloading body to cpu before running encoder", end = "...")
             self.body.to("cpu")
@@ -302,7 +320,7 @@ class RRDB_UNet_v2(nn.Module):
             for element in encoder_block:
                 feat = element(feat)
             residuals.append(feat)
-            
+
             if(self.inference):
                 pbar.update(1)
 
@@ -312,7 +330,7 @@ class RRDB_UNet_v2(nn.Module):
             self.body.to(body_original_device)
             torch.cuda.empty_cache()
             print(" ok!")
-        
+
         for element in self.body:
             feat = element(feat)
 
@@ -326,16 +344,16 @@ class RRDB_UNet_v2(nn.Module):
             torch.cuda.empty_cache()
             print(" ok!")
 
-                
+
         # run through decoder and insert residuals
         for decoder_block in self.decoder:
-            
+
             feat = torch.cat([feat, residuals[-1]], dim=1)
             del residuals[-1] # this is no longer required, delete to free memory
-            
+
             for element in decoder_block:
                 feat = element(feat)
-            
+
             if(self.inference):
                 pbar.update(1)
                 torch.cuda.empty_cache() # because the residual was deleted, free up the gpu memory
