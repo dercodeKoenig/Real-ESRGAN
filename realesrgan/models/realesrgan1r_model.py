@@ -353,9 +353,9 @@ class RealESRGANModel1R(SRGANModel):
 
                 
                 if self.cached_d_loss_value == -1:
-                        self.cached_d_loss_value = d_total_loss
+                    self.cached_d_loss_value = d_total_loss
                 else: # smooth update to make the decision of gan weight and if it should update d more stable and not just depend on 1 batch that has noise
-                        self.cached_d_loss_value = self.cached_d_loss_value * 0.99 + d_total_loss * 0.01
+                    self.cached_d_loss_value = self.cached_d_loss_value * 0.99 + d_total_loss * 0.01
                 self.cached_d_real = l_d_real.detach()
                 self.cached_d_fake = l_d_fake.detach()
                 self.cached_out_d_real = torch.mean(real_d_pred.detach())
