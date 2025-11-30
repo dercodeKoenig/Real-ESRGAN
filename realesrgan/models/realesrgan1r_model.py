@@ -49,6 +49,12 @@ class RealESRGANModel1R(SRGANModel):
         self.scaler_g = GradScaler()
         self.scaler_d = GradScaler()
 
+
+        self.d_guessing_threshold = opt['train'].get('d_guessing_threshold', 999999)
+        self.gan_weight_multiplier_when_d_guessing = opt['train'].get('gan_weight_multiplier_when_d_guessing', 0.05)
+        print ("d_guessing_threshold:", self.d_guessing_threshold)
+        print ("gan_weight_multiplier_when_d_guessing:", self.gan_weight_multiplier_when_d_guessing)
+        
         self.d_loss_threshold = opt['train'].get('d_loss_threshold',
                                                  0.6)  # When D loss < this, slow down D updates. When D loss < this / 2, skip the update
         self.d_slow_iters = opt['train'].get('d_slow_iters', 11)  # Update D every x steps when loss is low
@@ -302,6 +308,8 @@ class RealESRGANModel1R(SRGANModel):
                 if current_iter > self.gan_warmup_iters:
                     fake_g_pred = self.net_d(self.output)
                     l_g_gan = self.cri_gan(fake_g_pred, True, is_disc=False)
+                    if( self.cached_d_loss_value > self.d_guessing_threshold ):
+                        l_g_gan = l_g_gan * self.gan_weight_multiplier_when_d_guessing
                     l_g_total += l_g_gan
                     loss_dict['l_g_gan'] = l_g_gan
                 else:
