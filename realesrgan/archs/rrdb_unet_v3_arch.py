@@ -54,11 +54,11 @@ class ResidualDenseBlock(nn.Module):
 
     def __init__(self, num_feat=64, num_grow_ch=32):
         super(ResidualDenseBlock, self).__init__()
-        self.conv1 = nn.Conv2d(num_feat, num_grow_ch, 3, 1, 1)
-        self.conv2 = nn.Conv2d(num_feat + num_grow_ch, num_grow_ch, 3, 1, 1)
-        self.conv3 = nn.Conv2d(num_feat + 2 * num_grow_ch, num_grow_ch, 3, 1, 1)
-        self.conv4 = nn.Conv2d(num_feat + 3 * num_grow_ch, num_grow_ch, 3, 1, 1)
-        self.conv5 = nn.Conv2d(num_feat + 4 * num_grow_ch, num_feat, 3, 1, 1)
+        self.conv1 = nn.Conv2d(num_feat, num_grow_ch, 3, 1, 1, padding_mode='reflect')
+        self.conv2 = nn.Conv2d(num_feat + num_grow_ch, num_grow_ch, 3, 1, 1, padding_mode='reflect')
+        self.conv3 = nn.Conv2d(num_feat + 2 * num_grow_ch, num_grow_ch, 3, 1, 1, padding_mode='reflect')
+        self.conv4 = nn.Conv2d(num_feat + 3 * num_grow_ch, num_grow_ch, 3, 1, 1, padding_mode='reflect')
+        self.conv5 = nn.Conv2d(num_feat + 4 * num_grow_ch, num_feat, 3, 1, 1, padding_mode='reflect')
 
         self.lrelu = nn.LeakyReLU(negative_slope=0.2, inplace=True)
 
@@ -87,12 +87,12 @@ class HighwayRRDB(nn.Module):
         self.use_attention = use_attention
 
         # Apply parallel dilated convolutions on the compressed feature map
-        self.dc1 = nn.Conv2d(processing_channels, num_grow_ch, 3, 1, 1, dilation=1)
-        self.dc2 = nn.Conv2d(processing_channels, num_grow_ch, 3, 1, 2, dilation=2)
-        self.dc3 = nn.Conv2d(processing_channels, num_grow_ch, 3, 1, 3, dilation=3)
-        self.dc4 = nn.Conv2d(processing_channels, num_grow_ch, 3, 1, 4, dilation=4)
+        self.dc1 = nn.Conv2d(processing_channels, num_grow_ch, 3, 1, 1, dilation=1, padding_mode='reflect')
+        self.dc2 = nn.Conv2d(processing_channels, num_grow_ch, 3, 1, 2, dilation=2, padding_mode='reflect')
+        self.dc3 = nn.Conv2d(processing_channels, num_grow_ch, 3, 1, 3, dilation=3, padding_mode='reflect')
+        self.dc4 = nn.Conv2d(processing_channels, num_grow_ch, 3, 1, 4, dilation=4, padding_mode='reflect')
         # Fusion layer to combine the outputs of the dilated convolutions
-        self.context_fusion = nn.Conv2d(num_grow_ch * 4, processing_channels, 3, 1, 1)
+        self.context_fusion = nn.Conv2d(num_grow_ch * 4, processing_channels, 3, 1, 1, padding_mode='reflect')
 
         # Compression: Highway → Processing
         self.compress = nn.Conv2d(highway_channels, processing_channels, kernel_size=1)
@@ -104,7 +104,7 @@ class HighwayRRDB(nn.Module):
 
         # Expansion: Processing → Highway
         # Using 3x3 for spatial-aware mixing before expansion
-        self.pre_expand = nn.Conv2d(processing_channels, processing_channels, kernel_size=3, padding=1)
+        self.pre_expand = nn.Conv2d(processing_channels, processing_channels, kernel_size=3, padding=1, padding_mode='reflect')
         self.expand = nn.Conv2d(processing_channels, highway_channels, kernel_size=1)
 
         # Channel attention on highway features
@@ -174,7 +174,7 @@ class RRDB_UNet_v3(nn.Module):
         self.w_h_multiple = 2 ** (len(ae_channel_multipliers)-1)
 
         self.prep = nn.ModuleList()
-        self.prep.append(nn.Conv2d(num_in_ch, highway_channels_base * ae_channel_multipliers[0], 3, 1, 1))  # get the image to initial channel num
+        self.prep.append(nn.Conv2d(num_in_ch, highway_channels_base * ae_channel_multipliers[0], 3, 1, 1, padding_mode='reflect'))  # get the image to initial channel num
         self.prep.append(nn.LeakyReLU(negative_slope=0.01, inplace=True))
 
         # create encoder
@@ -198,7 +198,7 @@ class RRDB_UNet_v3(nn.Module):
                 )
             ## pixelUnShuffle & channel match for next block
             encoder_block.append(nn.PixelUnshuffle(2))
-            encoder_block.append(nn.Conv2d(highway_channels_base * current_multiplier * 4, highway_channels_base * next_multiplier, 3, 1,1))  # from 4x pixelUnShuffle channel growth to target channels for the next encoder block
+            encoder_block.append(nn.Conv2d(highway_channels_base * current_multiplier * 4, highway_channels_base * next_multiplier, 3, 1,1, padding_mode='reflect'))  # from 4x pixelUnShuffle channel growth to target channels for the next encoder block
             encoder_block.append(nn.LeakyReLU(negative_slope=0.01, inplace=True))
 
             self.encoder.append(encoder_block)
@@ -229,13 +229,13 @@ class RRDB_UNet_v3(nn.Module):
             decoder_block = nn.ModuleList()
 
             # the encoder residual is is concat to the features and then channels are reduced again
-            decoder_block.append(nn.Conv2d(highway_channels_base * last_multiplier * 2, highway_channels_base * last_multiplier, 3,1,1))
+            decoder_block.append(nn.Conv2d(highway_channels_base * last_multiplier * 2, highway_channels_base * last_multiplier, 3,1,1, padding_mode='reflect'))
             decoder_block.append(nn.LeakyReLU(negative_slope=0.01, inplace=True))
 
 
             ## pixelShuffle input up
             decoder_block.append(nn.PixelShuffle(2))
-            decoder_block.append(nn.Conv2d(highway_channels_base * last_multiplier // 4, highway_channels_base * current_multiplier, 3, 1, 1))  # from 1/4x pixelShuffle channel growth to target channels for the current decoder block
+            decoder_block.append(nn.Conv2d(highway_channels_base * last_multiplier // 4, highway_channels_base * current_multiplier, 3, 1, 1, padding_mode='reflect'))  # from 1/4x pixelShuffle channel growth to target channels for the current decoder block
             decoder_block.append(nn.LeakyReLU(negative_slope=0.01, inplace=True))
 
             ## rrdbs
@@ -268,9 +268,9 @@ class RRDB_UNet_v3(nn.Module):
 
         self.tail = nn.Sequential(
             # Note the input channels: cat_ch
-            nn.Conv2d(cat_ch, final_inner_ch, 3, 1, 1),
+            nn.Conv2d(cat_ch, final_inner_ch, 3, 1, 1, padding_mode='reflect'),
             nn.LeakyReLU(negative_slope=0.01, inplace=True),
-            nn.Conv2d(final_inner_ch, final_inner_ch, 3, 1, 1),
+            nn.Conv2d(final_inner_ch, final_inner_ch, 3, 1, 1, padding_mode='reflect'),
             nn.LeakyReLU(negative_slope=0.01, inplace=True),
             nn.Conv2d(final_inner_ch, num_in_ch, 1, 1, 0)
         )
