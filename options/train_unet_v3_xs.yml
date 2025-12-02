@@ -165,7 +165,7 @@ train:
     gan_type: vanilla
     real_label_val: 1.0
     fake_label_val: 0.0
-    loss_weight: 0.1
+    loss_weight: 0.01
 
   # Adaptive generator / discriminator training
   d_loss_threshold: 0.6   # Adjust based on your typical D loss values
