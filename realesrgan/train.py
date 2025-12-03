@@ -1,4 +1,8 @@
 # flake8: noqa
+
+import os
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+
 import os.path as osp
 from basicsr.train import train_pipeline
 
