@@ -93,7 +93,7 @@ network_g:
   ae_rrdb_blocks: 3
   ae_channel_multipliers: [1,3,9,18,36]
   use_attention: true
-  body_rrdb_blocks: 14
+  body_rrdb_blocks: 13
 
 network_d:
   type: AdvancedUNetDiscriminator
