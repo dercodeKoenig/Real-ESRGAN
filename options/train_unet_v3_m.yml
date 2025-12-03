@@ -91,15 +91,15 @@ network_g:
   processing_channels_base: 16
   num_grow_ch_base: 8
   ae_rrdb_blocks: 3
-  ae_channel_multipliers: [1,3,9,24,48]
+  ae_channel_multipliers: [1,3,9,18,36]
   use_attention: true
-  body_rrdb_blocks: 20
+  body_rrdb_blocks: 14
 
 network_d:
   type: AdvancedUNetDiscriminator
   num_in_ch: 3
   num_feat: 32
-  depth: 5
+  depth: 4
   skip_connection: True
 
 # path
@@ -119,6 +119,7 @@ train:
     lr: 0.00005
     weight_decay: 0
     betas: [0.9, 0.99]
+    fused: True
   optim_d:
     type: Adam
     lr: 0.00001
@@ -137,6 +138,7 @@ train:
   percept_warmup_iters: 5000
   min_scale: 1
   max_scale: 8
+  use_compile: True
 
 
   # losses
