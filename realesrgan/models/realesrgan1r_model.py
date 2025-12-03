@@ -327,6 +327,9 @@ class RealESRGANModel1R(SRGANModel):
                 self.optimizer_g.zero_grad()
                 self._accum_steps = 0  # reset counter
 
+                if self.ema_decay > 0:
+                    self.model_ema(decay=self.ema_decay)
+
             output_for_d = self.output.detach().clone()
 
             # --- 3. optimize discriminator as usual ---
@@ -367,11 +370,8 @@ class RealESRGANModel1R(SRGANModel):
             loss_dict['out_d_fake'] = self.cached_out_d_fake
             loss_dict['d_total_loss'] = torch.tensor(self.cached_d_loss_value, device=self.cached_d_real.device)
 
-            if self.ema_decay > 0:
-                self.model_ema(decay=self.ema_decay)
-
             self.log_dict = self.reduce_loss_dict(loss_dict)
 
-            # --- 4. Feed generator output as new LQ for next refinement ---
+            # --- Feed generator output as new LQ for next refinement ---
             self.lq = self.output.detach()  # use model output as next input
 
