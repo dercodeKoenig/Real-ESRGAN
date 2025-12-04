@@ -171,7 +171,7 @@ train:
     loss_weight: 0.01
 
   # Adaptive generator / discriminator training
-  d_loss_threshold: 0.6   # Adjust based on your typical D loss values
+  d_loss_threshold: 0.5   # Adjust based on your typical D loss values
   d_slow_iters: 33        # Update D every x steps when loss < threshold ( it will still skip the update if total loss is < 50% of the threshold )
   d_normal_iters: 1       # update d if steps % d_normal_iters == 0
   d_guessing_threshold: 1.0 # about 1.3... is when d is 50% sure with vanilla gan, so over 1 is mostly guessing
