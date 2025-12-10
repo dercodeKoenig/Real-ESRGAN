@@ -156,12 +156,14 @@ class HighwayRRDB(nn.Module):
 class RRDB_UNet_v3(nn.Module):
 
     def __init__(self, num_in_ch, highway_channels_base=32, processing_channels_base=16, num_grow_ch_base=8,
-                 ae_rrdb_blocks=4, ae_channel_multipliers = [1,2,4,8,16],use_attention=True, body_rrdb_blocks=12, inference = False, body_cpu_offload_min_res = 6000*6000):
+                 ae_rrdb_blocks=4, ae_channel_multipliers = [1,2,4,8,16],use_attention=True, body_rrdb_blocks=12, res1_add = True, inference = False, body_cpu_offload_min_res = 6000*6000):
 
         super(RRDB_UNet_v3, self).__init__()
 
         self.inference = inference
         self.body_cpu_offload_min_res = body_cpu_offload_min_res # unloads the large body to cpu during AE high resolution processing to make room for the feature maps
+
+        self.res1_add = res1_add
 
         print("highway_channels_base", highway_channels_base)
         print("processing_channels_base", processing_channels_base)
@@ -170,6 +172,7 @@ class RRDB_UNet_v3(nn.Module):
         print("ae_channel_multipliers", ae_channel_multipliers)
         print("use_attention", use_attention)
         print("body_rrdb_blocks", body_rrdb_blocks)
+        print("using res1 addition", self.res1_add)
 
         self.w_h_multiple = 2 ** (len(ae_channel_multipliers)-1)
 
@@ -364,7 +367,8 @@ class RRDB_UNet_v3(nn.Module):
         # Run the refinement tail
         feat = self.tail(feat)
 
-        feat = feat + res1 # and also add the original image at the end back so it only needs to learn the difference
+        if self.res1_add:
+            feat = feat + res1 # and also add the original image at the end back so it only needs to learn the difference
 
         if(self.inference):
                 pbar.update(1)
