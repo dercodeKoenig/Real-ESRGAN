@@ -13,6 +13,8 @@ from basicsr.utils import DiffJPEG, USMSharp
 from basicsr.utils.img_process_util import filter2D
 from basicsr.utils.registry import MODEL_REGISTRY
 
+import torch.distributed as dist
+
 # idk claude says it is faster
 torch.backends.cudnn.benchmark = True
 torch.backends.cuda.matmul.allow_tf32 = True
@@ -37,18 +39,13 @@ class RealESRGANModel1R(SRGANModel):
             self.net_g.compile(dynamic=False) # unfortunately, the noise injection layer is incompatible with max-autotune
             self.net_d.compile(dynamic=False)
 
-        self.jpeger = DiffJPEG(differentiable=False).cuda()  # simulate JPEG compression artifacts
-        self.usm_sharpener = USMSharp().cuda()  # do usm sharpening
+        self.jpeger = DiffJPEG(differentiable=False).to(self.device)  # simulate JPEG compression artifacts
+        self.usm_sharpener = USMSharp().to(self.device)  # do usm sharpening
         self.queue_size = opt.get('queue_size', 180)
 
         self.min_scale = opt['train'].get('min_scale', 1.0)
         self.max_scale = opt['train'].get('max_scale', 4.0)
         print("scales:", self.min_scale, self.max_scale)
-
-        # Initialize AMP components
-        self.scaler_g = GradScaler()
-        self.scaler_d = GradScaler()
-
 
         self.d_guessing_threshold = opt['train'].get('d_guessing_threshold', 999999)
         self.gan_weight_multiplier_when_d_guessing = opt['train'].get('gan_weight_multiplier_when_d_guessing', 0.05)
@@ -71,10 +68,10 @@ class RealESRGANModel1R(SRGANModel):
         self.cached_d_loss_value = -1
 
         # Cache tensor values instead of floats - initialize as tensors
-        self.cached_d_real = torch.tensor(0.0, device='cuda')
-        self.cached_d_fake = torch.tensor(0.0, device='cuda')
-        self.cached_out_d_real = torch.tensor(0.0, device='cuda')
-        self.cached_out_d_fake = torch.tensor(0.0, device='cuda')
+        self.cached_d_real = torch.tensor(0.0, device=self.device)
+        self.cached_d_fake = torch.tensor(0.0, device=self.device)
+        self.cached_out_d_real = torch.tensor(0.0, device=self.device)
+        self.cached_out_d_fake = torch.tensor(0.0, device=self.device)
 
         print(f"D loss threshold: {self.d_loss_threshold}")
         print(f"D slow update interval: {self.d_slow_iters}")
@@ -83,42 +80,7 @@ class RealESRGANModel1R(SRGANModel):
         print("gan_warmup_iters:", self.gan_warmup_iters)
         print("percept_warmup_iters:", self.percept_warmup_iters)
 
-    @torch.no_grad()
-    def _dequeue_and_enqueue(self):
-        """It is the training pair pool for increasing the diversity in a batch.
-
-        Batch processing limits the diversity of synthetic degradations in a batch. For example, samples in a
-        batch could not have different resize scaling factors. Therefore, we employ this training pair pool
-        to increase the degradation diversity in a batch.
-        """
-        # initialize
-        b, c, h, w = self.lq.size()
-        if not hasattr(self, 'queue_lr'):
-            assert self.queue_size % b == 0, f'queue size {self.queue_size} should be divisible by batch size {b}'
-            self.queue_lr = torch.zeros(self.queue_size, c, h, w).cuda()
-            _, c, h, w = self.gt.size()
-            self.queue_gt = torch.zeros(self.queue_size, c, h, w).cuda()
-            self.queue_ptr = 0
-        if self.queue_ptr == self.queue_size:  # the pool is full
-            # do dequeue and enqueue
-            # shuffle
-            idx = torch.randperm(self.queue_size)
-            self.queue_lr = self.queue_lr[idx]
-            self.queue_gt = self.queue_gt[idx]
-            # get first b samples
-            lq_dequeue = self.queue_lr[0:b, :, :, :].clone()
-            gt_dequeue = self.queue_gt[0:b, :, :, :].clone()
-            # update the queue
-            self.queue_lr[0:b, :, :, :] = self.lq.clone()
-            self.queue_gt[0:b, :, :, :] = self.gt.clone()
-
-            self.lq = lq_dequeue
-            self.gt = gt_dequeue
-        else:
-            # only do enqueue
-            self.queue_lr[self.queue_ptr:self.queue_ptr + b, :, :, :] = self.lq.clone()
-            self.queue_gt[self.queue_ptr:self.queue_ptr + b, :, :, :] = self.gt.clone()
-            self.queue_ptr = self.queue_ptr + b
+        self.check_ddp_consistency()
 
     @torch.no_grad()
     def feed_data(self, data):
@@ -224,10 +186,6 @@ class RealESRGANModel1R(SRGANModel):
             gt_size = self.opt['gt_size']
             (self.gt, self.gt_usm), self.lq = paired_random_crop([self.gt, self.gt_usm], self.lq, gt_size, 1)
 
-            # Training pair pool
-            self._dequeue_and_enqueue()
-            # sharpen self.gt again, as we have changed the self.gt with self._dequeue_and_enqueue
-            self.gt_usm = self.usm_sharpener(self.gt)
             self.lq = self.lq.contiguous()  # for the warning: grad and param do not obey the gradient layout contract
         else:
             # For validation - interpolate LQ to GT size
@@ -255,9 +213,45 @@ class RealESRGANModel1R(SRGANModel):
         else:
             # D loss is reasonable, update normally
             return current_iter % self.d_normal_iters == 0
+    
+    @torch.no_grad()
+    def check_ddp_consistency(self):
+        """
+        Verifies that model weights are identical across all GPUs.
+        """
+        if not dist.is_initialized():
+            return
 
+        # Check Generator weights
+        for name, param in self.net_g.named_parameters():
+            if param.grad is not None:
+                # Gather parameters from all GPUs
+                params_list = [torch.zeros_like(param) for _ in range(dist.get_world_size())]
+                dist.all_gather(params_list, param)
+                
+                # Compare all against rank 0
+                base_param = params_list[0]
+                for i, other_param in enumerate(params_list[1:]):
+                    if not torch.allclose(base_param, other_param, atol=1e-6):
+                        print(f"CRITICAL WARNING: Rank {i+1} G param '{name}' mismatch with Rank 0!")
+                        raise RuntimeError("DDP Desynchronization detected!")
+                #break # Checking one parameter is usually enough to detect divergence
+
+        # Check Discriminator weights (Crucial for your adaptive logic)
+        for name, param in self.net_d.named_parameters():
+            if param.requires_grad:
+                params_list = [torch.zeros_like(param) for _ in range(dist.get_world_size())]
+                dist.all_gather(params_list, param)
+                
+                base_param = params_list[0]
+                for i, other_param in enumerate(params_list[1:]):
+                    if not torch.allclose(base_param, other_param, atol=1e-6):
+                        print(f"CRITICAL WARNING: Rank {i+1} D param '{name}' mismatch with Rank 0!")
+                        raise RuntimeError("DDP Desynchronization detected!")
+                #break
+                
     def optimize_parameters(self, current_iter):
-        num_refine = self.opt.get('num_refine_steps', 2)  # e.g. set in YAML or default
+        num_refine = self.opt.get('num_refine_steps', 1)  # e.g. set in YAML or default
 
         for refine_step in range(num_refine):
             # --- 1. choose GTs depending on usm options ---
@@ -273,7 +267,7 @@ class RealESRGANModel1R(SRGANModel):
             if self._accum_steps == 0:
                 self.optimizer_g.zero_grad()
 
-            with autocast('cuda'):
+            with autocast('cuda', dtype=torch.bfloat16):
                 self.output = self.net_g(self.lq)
                 if self.cri_ldl:
                     self.output_ema = self.net_g_ema(self.lq)
@@ -313,17 +307,16 @@ class RealESRGANModel1R(SRGANModel):
                     l_g_total += l_g_gan
                     loss_dict['l_g_gan'] = l_g_gan
                 else:
-                    loss_dict['l_g_gan'] = torch.tensor(0.0, device='cuda')
+                    loss_dict['l_g_gan'] = torch.tensor(0.0, device=self.device)
 
             # --- Backward pass for generator ---
             scaled_loss = l_g_total / float(self.gradient_accumulation_steps)
-            self.scaler_g.scale(scaled_loss).backward()
+            scaled_loss.backward()
             self._accum_steps += 1
 
             # Step optimizer only when accumulated enough
             if self._accum_steps >= self.gradient_accumulation_steps:
-                self.scaler_g.step(self.optimizer_g)
-                self.scaler_g.update()
+                self.optimizer_g.step()
                 self.optimizer_g.zero_grad()
                 self._accum_steps = 0  # reset counter
 
@@ -339,20 +332,22 @@ class RealESRGANModel1R(SRGANModel):
             should_update_d = self._should_update_discriminator(current_iter)
             if should_update_d:
                 self.optimizer_d.zero_grad()
-                with autocast('cuda'):
+                with autocast('cuda', dtype=torch.bfloat16):
                     real_d_pred = self.net_d(gan_gt)
                     fake_d_pred = self.net_d(output_for_d)
                     l_d_real = self.cri_gan(real_d_pred, True, is_disc=True)
                     l_d_fake = self.cri_gan(fake_d_pred, False, is_disc=True)
-                d_total_loss = (l_d_real + l_d_fake).item()
+                d_total_loss_tensor = (l_d_real + l_d_fake)
+                if dist.is_initialized():
+                    loss_to_sync = d_total_loss_tensor.detach().clone()
+                    dist.all_reduce(loss_to_sync, op=dist.ReduceOp.AVG)
+                    d_total_loss = loss_to_sync.item()
+                else:
+                    d_total_loss = d_total_loss_tensor.item()
 
                 if d_total_loss >= self.d_loss_threshold * 0.5:
-                    self.scaler_d.scale(l_d_real).backward()
-                    self.scaler_d.scale(l_d_fake).backward()
-                    self.scaler_d.unscale_(self.optimizer_d)
-                    torch.nn.utils.clip_grad_norm_(self.net_d.parameters(), 1.0)
-                    self.scaler_d.step(self.optimizer_d)
-                    self.scaler_d.update()
+                    d_total_loss_tensor.backward()
+                    self.optimizer_d.step()
 
                 
                 if self.cached_d_loss_value == -1:
@@ -375,3 +370,5 @@ class RealESRGANModel1R(SRGANModel):
             # --- Feed generator output as new LQ for next refinement ---
             self.lq = self.output.detach()  # use model output as next input
 
+            if current_iter % 1000 == 0:
+                self.check_ddp_consistency()
