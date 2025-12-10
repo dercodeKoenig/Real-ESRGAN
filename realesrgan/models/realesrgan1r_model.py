@@ -316,6 +316,7 @@ class RealESRGANModel1R(SRGANModel):
 
             # Step optimizer only when accumulated enough
             if self._accum_steps >= self.gradient_accumulation_steps:
+                torch.nn.utils.clip_grad_norm_(self.net_g.parameters(), max_norm=1.0)
                 self.optimizer_g.step()
                 self.optimizer_g.zero_grad()
                 self._accum_steps = 0  # reset counter
@@ -347,6 +348,7 @@ class RealESRGANModel1R(SRGANModel):
 
                 if d_total_loss >= self.d_loss_threshold * 0.5:
                     d_total_loss_tensor.backward()
+                    torch.nn.utils.clip_grad_norm_(self.net_d.parameters(), max_norm=1.0)
                     self.optimizer_d.step()
 
                 
