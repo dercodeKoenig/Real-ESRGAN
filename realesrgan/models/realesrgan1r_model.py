@@ -62,6 +62,7 @@ class RealESRGANModel1R(SRGANModel):
 
         self.gradient_accumulation_steps = opt['train'].get('gradient_accumulation_steps', 1)
         self._accum_steps = 0  # internal counter for gradient accumulation
+        self._accum_steps_d = 0  # internal counter for gradient accumulation
         print("gradient_accumulation_steps:",  self.gradient_accumulation_steps)
 
         # Track discriminator update counter and cached values
@@ -263,10 +264,6 @@ class RealESRGANModel1R(SRGANModel):
             for p in self.net_d.parameters():
                 p.requires_grad = False
 
-            # zero grad only at the start of an accumulation window
-            if self._accum_steps == 0:
-                self.optimizer_g.zero_grad()
-
             with autocast('cuda', dtype=torch.bfloat16):
                 self.output = self.net_g(self.lq)
                 if self.cri_ldl:
@@ -332,7 +329,6 @@ class RealESRGANModel1R(SRGANModel):
 
             should_update_d = self._should_update_discriminator(current_iter)
             if should_update_d:
-                self.optimizer_d.zero_grad()
                 with autocast('cuda', dtype=torch.bfloat16):
                     real_d_pred = self.net_d(gan_gt)
                     fake_d_pred = self.net_d(output_for_d)
@@ -347,9 +343,17 @@ class RealESRGANModel1R(SRGANModel):
                     d_total_loss = d_total_loss_tensor.item()
 
                 if d_total_loss >= self.d_loss_threshold * 0.5:
-                    d_total_loss_tensor.backward()
+                    scaled_loss_tensor = d_total_loss_tensor / float(self.gradient_accumulation_steps)
+                    scaled_loss_tensor.backward()
+                    self._accum_steps_d += 1
+
+
+                # Step optimizer only when accumulated enough
+                if self._accum_steps_d >= self.gradient_accumulation_steps:
                     torch.nn.utils.clip_grad_norm_(self.net_d.parameters(), max_norm=1.0)
                     self.optimizer_d.step()
+                    self.optimizer_d.zero_grad()
+                    self._accum_steps_d = 0
 
                 
                 if self.cached_d_loss_value < 0:
