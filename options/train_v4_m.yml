@@ -135,8 +135,8 @@ train:
   total_iter: 32000000
   warmup_iter: 10000
   gradient_accumulation_steps: 32
-  gan_warmup_iters: 5000
-  percept_warmup_iters: 5000
+  gan_warmup_iters: 1000
+  percept_warmup_iters: 1000
   min_scale: 1
   max_scale: 8
   use_compile: True
