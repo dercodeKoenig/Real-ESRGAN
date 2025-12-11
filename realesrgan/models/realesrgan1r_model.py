@@ -295,7 +295,7 @@ class RealESRGANModel1R(SRGANModel):
                         l_g_total += l_g_style
                         loss_dict['l_g_style'] = l_g_style
 
-                if current_iter > self.gan_warmup_iters and self.enable_gan and self.cached_d_loss_value > self.d_guessing_threshold :
+                if current_iter > self.gan_warmup_iters and self.enable_gan and self.cached_d_loss_value < self.d_guessing_threshold :
                     fake_g_pred = self.net_d(self.output)
                     l_g_gan = self.cri_gan(fake_g_pred, True, is_disc=False)
                     l_g_total += l_g_gan
