@@ -334,9 +334,12 @@ class RealESRGANModel1R(SRGANModel):
                 with autocast('cuda', dtype=torch.bfloat16):
                     real_d_pred = self.net_d(gan_gt)
                     fake_d_pred = self.net_d(output_for_d)
-                    l_d_real = self.cri_gan(real_d_pred, True, is_disc=True)
-                    l_d_fake = self.cri_gan(fake_d_pred, False, is_disc=True)
+                    
+                # Cast outputs to float32 before loss calculation
+                l_d_real = self.cri_gan(real_d_pred.float(), True, is_disc=True) 
+                l_d_fake = self.cri_gan(fake_d_pred.float(), False, is_disc=True)
                 d_total_loss_tensor = (l_d_real + l_d_fake)
+                
                 if dist.is_initialized():
                     loss_to_sync = d_total_loss_tensor.detach().clone()
                     dist.all_reduce(loss_to_sync, op=dist.ReduceOp.AVG)
