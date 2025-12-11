@@ -202,9 +202,9 @@ class RealESRGANModel1R(SRGANModel):
 
     def _should_update_discriminator(self, current_iter):
         """Determine if discriminator should be updated based on adaptive strategy using cached loss."""
-        # (disabled) Always skip during initial discriminator training period
-        #if current_iter <= self.gan_warmup_iters:
-        #   return False
+        # Always skip during initial discriminator training period
+        if current_iter <= self.gan_warmup_iters:
+            return False
 
         # Adaptive strategy based on cached discriminator loss from previous iteration
         if self.cached_d_loss_value < self.d_loss_threshold and self.cached_d_loss_value != -1:
