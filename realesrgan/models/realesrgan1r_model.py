@@ -60,6 +60,9 @@ class RealESRGANModel1R(SRGANModel):
         self.gan_warmup_iters = opt['train'].get('gan_warmup_iters', 0)  # warmup steps before gan training
         self.percept_warmup_iters = opt['train'].get('percept_warmup_iters', 0)  # warmup steps before adding vgg loss
 
+        self.enable_gan = opt['train'].get('enable_gan', True)
+        print("gan enabled", self.enable_gan)
+
         self.gradient_accumulation_steps = opt['train'].get('gradient_accumulation_steps', 1)
         self._accum_steps = 0  # internal counter for gradient accumulation
         self._accum_steps_d = 0  # internal counter for gradient accumulation
@@ -203,8 +206,7 @@ class RealESRGANModel1R(SRGANModel):
 
     def _should_update_discriminator(self, current_iter):
         """Determine if discriminator should be updated based on adaptive strategy using cached loss."""
-        # Always skip during initial discriminator training period
-        if current_iter <= self.gan_warmup_iters:
+        if not self.enable_gan:
             return False
 
         # Adaptive strategy based on cached discriminator loss from previous iteration
@@ -296,7 +298,7 @@ class RealESRGANModel1R(SRGANModel):
                         l_g_total += l_g_style
                         loss_dict['l_g_style'] = l_g_style
 
-                if current_iter > self.gan_warmup_iters:
+                if current_iter > self.gan_warmup_iters and self.enable_gan:
                     fake_g_pred = self.net_d(self.output)
                     l_g_gan = self.cri_gan(fake_g_pred, True, is_disc=False)
                     if( self.cached_d_loss_value > self.d_guessing_threshold ):
