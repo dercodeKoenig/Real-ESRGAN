@@ -102,6 +102,7 @@ network_d:
   num_feat: 32
   depth: 4
   skip_connection: True
+  final_act: tanh
 
 # path
 path:
@@ -118,13 +119,13 @@ train:
   optim_g:
     type: Adam
     lr: 0.00005
-    weight_decay: 0
+    weight_decay: 0.00001
     betas: [0.9, 0.99]
     fused: True
   optim_d:
     type: Adam
     lr: 0.00001
-    weight_decay: 0
+    weight_decay: 0.0001
     betas: [0.9, 0.99]
 
   scheduler:
@@ -134,7 +135,7 @@ train:
 
   total_iter: 8000000
   warmup_iter: 1000
-  gradient_accumulation_steps: 32
+  gradient_accumulation_steps: 4
   gan_warmup_iters: 500
   percept_warmup_iters: 500
   min_scale: 1
@@ -167,11 +168,13 @@ train:
   # gan loss
   gan_opt:
     type: GANLoss
-    gan_type: hinge 
-    loss_weight: 0.1
+    gan_type: lsgan 
+    loss_weight: 1.0
+    real_label_val: 0.95
+    fake_label_val: -0.95
     
-  d_loss_threshold: 0.1 # D is strong if loss is below 0.1. Slow D down here.
-  d_slow_iters: 33
+  d_loss_threshold: 0
+  d_slow_iters: 1
   d_normal_iters: 1
   d_guessing_threshold: 1.8
 
