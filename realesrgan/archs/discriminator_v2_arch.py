@@ -21,26 +21,36 @@ class ResidualBlock(nn.Module):
         out = self.relu(out)
         return x + out  # Residual connection
 
-
 # --- Advanced Discriminator ---
 @ARCH_REGISTRY.register()
 class AdvancedUNetDiscriminator(nn.Module):
     """
     Advanced U-Net Discriminator with Spectral Normalization, Dynamic Depth,
-    and Residual Blocks.
+    Residual Blocks, and configurable final activation.
 
     Arguments:
         num_in_ch (int): Channel number of inputs. Default: 3.
         num_feat (int): Channel number of base intermediate features. Default: 64.
         depth (int): Number of downsampling/upsampling stages (U-Net depth). Default: 4.
         skip_connection (bool): Whether to use skip connections between U-Net. Default: True.
+        final_act (str): Final activation function ('sigmoid', 'tanh', or 'linear'). Default: 'linear'.
     """
 
-    def __init__(self, num_in_ch, num_feat=64, depth=4, skip_connection=True):
+    def __init__(self, num_in_ch, num_feat=64, depth=4, skip_connection=True, final_act='linear'):
         super().__init__()
         self.skip_connection = skip_connection
         self.depth = depth
         norm = spectral_norm
+        self.final_act = final_act.lower()
+        
+        if self.final_act == 'sigmoid':
+            self.activation = nn.Sigmoid()
+        elif self.final_act == 'tanh':
+            self.activation = nn.Tanh()
+        elif self.final_act == 'linear':
+            self.activation = lambda x: x # Identity function for linear
+        else:
+            raise ValueError(f"Unsupported final_act: {final_act}. Must be 'sigmoid', 'tanh', or 'linear'.")
 
         # Initial Convolution (Feature Extraction)
         self.initial_conv = nn.Sequential(
@@ -52,7 +62,6 @@ class AdvancedUNetDiscriminator(nn.Module):
 
         # --- Downsampling Path ---
         self.down_blocks = nn.ModuleList()
-
         for i in range(depth):
             in_ch = num_feat * (2 ** i)
             out_ch = num_feat * (2 ** (i + 1))
@@ -79,7 +88,8 @@ class AdvancedUNetDiscriminator(nn.Module):
             block = nn.Sequential(
                 ResidualBlock(in_ch, norm_layer=norm),
                 ResidualBlock(in_ch, norm_layer=norm),
-                norm(nn.Conv2d(in_ch, out_ch, kernel_size=3, stride=1, padding=1)),
+                # Note: Conv2d is NOT a Transposed Conv, the upsampling is done via F.interpolate in forward
+                norm(nn.Conv2d(in_ch, out_ch, kernel_size=3, stride=1, padding=1)), 
             )
             self.up_blocks.append(block)
 
@@ -87,7 +97,7 @@ class AdvancedUNetDiscriminator(nn.Module):
         self.extra_convs = nn.Sequential(
             ResidualBlock(num_feat, norm_layer=norm),
             ResidualBlock(num_feat, norm_layer=norm),
-            nn.Conv2d(num_feat, 1, 3, 1, 1)  # Final classification layer
+            nn.Conv2d(num_feat, 1, 3, 1, 1)  # Final classification layer (before activation)
         )
 
     def forward(self, x):
@@ -108,13 +118,16 @@ class AdvancedUNetDiscriminator(nn.Module):
         # Upsampling
         for i, up_block in enumerate(self.up_blocks):
             x = F.interpolate(x, scale_factor=2, mode='bilinear', align_corners=False)
-            x =up_block(x)
+            x = up_block(x)
 
             if self.skip_connection:
                 x = x + x_stages[-1]
                 del x_stages[-1]
 
-
         # Extra Convolutions / Output
         out = self.extra_convs(x)
+        
+        # Apply the selected final activation
+        out = self.activation(out) 
+        
         return out
