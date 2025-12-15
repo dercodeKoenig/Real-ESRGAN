@@ -1,6 +1,7 @@
 import numpy as np
 import random
 import torch
+import torchvision
 from collections import OrderedDict
 from torch.nn import functional as F
 from torch.amp import autocast, GradScaler
@@ -64,6 +65,14 @@ class RealESRGANModel1R(SRGANModel):
         self.gradient_accumulation_steps = opt['train'].get('gradient_accumulation_steps', 1)
         self._accum_steps = 0  # internal counter for gradient accumulation
         print("gradient_accumulation_steps:",  self.gradient_accumulation_steps)
+
+        self.blur_pixel_loss = opt['train'].get('blur_pixel_loss', False)
+        if self.blur_pixel_loss:
+            self.pixel_blur_transform = torchvision.transforms.GaussianBlur(
+                kernel_size=9, 
+                sigma=1.5
+            ).to(self.device)
+        print("blur_pixel_loss:",  self.blur_pixel_loss)
 
         # Track discriminator update counter and cached values
         self.cached_d_loss_value = -1.0
@@ -273,7 +282,12 @@ class RealESRGANModel1R(SRGANModel):
 
                 # pixel / ldl / perceptual / gan losses as in your code
                 if self.cri_pix:
-                    l_g_pix = self.cri_pix(self.output, l1_gt)
+                    if(self.blur_pixel_loss):
+                        output_blur = self.pixel_blur_transform(self.output)
+                        l1_gt_blur = self.pixel_blur_transform(l1_gt)
+                        l_g_pix = self.cri_pix(output_blur, l1_gt_blur)
+                    else:    
+                        l_g_pix = self.cri_pix(self.output, l1_gt)
                     l_g_total += l_g_pix
                     loss_dict['l_g_pix'] = l_g_pix
 

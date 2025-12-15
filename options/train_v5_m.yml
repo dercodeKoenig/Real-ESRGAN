@@ -177,6 +177,7 @@ train:
   d_slow_iters: 1
   d_normal_iters: 1
   d_guessing_threshold: 1.8
+  blur_pixel_loss: True
 
 
 # validation settings
