@@ -170,13 +170,13 @@ train:
     type: GANLoss
     gan_type: lsgan 
     loss_weight: 1.0
-    real_label_val: 0.95
-    fake_label_val: -0.95
+    real_label_val: 0.5
+    fake_label_val: -0.5
     
   d_loss_threshold: 0
   d_slow_iters: 1
   d_normal_iters: 1
-  d_guessing_threshold: 1.8
+  d_guessing_threshold: 0.5
   blur_pixel_loss: True
 
 
