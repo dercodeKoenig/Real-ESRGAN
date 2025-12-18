@@ -124,7 +124,7 @@ train:
     fused: True
   optim_d:
     type: AdamW
-    lr: 0.0000125
+    lr: 0.000005
     weight_decay: 0.0001
     betas: [0.9, 0.99]
 
@@ -173,8 +173,8 @@ train:
     real_label_val: 0.5
     fake_label_val: -0.5
     
-  d_loss_threshold: 0.02
-  d_slow_iters: 4
+  d_loss_threshold: 0
+  d_slow_iters: 1
   d_normal_iters: 1
   d_guessing_threshold: 0.5
   blur_pixel_loss: True
