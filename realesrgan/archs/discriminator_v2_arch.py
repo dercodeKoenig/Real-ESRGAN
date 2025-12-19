@@ -1,4 +1,5 @@
 from basicsr.utils.registry import ARCH_REGISTRY
+import torch
 from torch import nn as nn
 from torch.nn import functional as F
 from torch.nn.utils import spectral_norm
@@ -36,12 +37,13 @@ class AdvancedUNetDiscriminator(nn.Module):
         final_act (str): Final activation function ('sigmoid', 'tanh', or 'linear'). Default: 'linear'.
     """
 
-    def __init__(self, num_in_ch, num_feat=64, depth=4, skip_connection=True, final_act='linear'):
+    def __init__(self, num_in_ch, num_feat=64, depth=4, skip_connection=True, final_act='linear', noise_scale = 0.01):
         super().__init__()
         self.skip_connection = skip_connection
         self.depth = depth
         norm = spectral_norm
         self.final_act = final_act.lower()
+        self.noise_scale = noise_scale
         
         if self.final_act == 'sigmoid':
             self.activation = nn.Sigmoid()
@@ -101,6 +103,8 @@ class AdvancedUNetDiscriminator(nn.Module):
         )
 
     def forward(self, x):
+
+        x = x + torch.randn_like(x) * self.noise_scale
 
         x_stages = []  # Store outputs for skip connections
 
