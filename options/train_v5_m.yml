@@ -161,7 +161,7 @@ train:
       'conv5_4': 1.0
     vgg_type: vgg19
     use_input_norm: true
-    perceptual_weight: 1.0
+    perceptual_weight: 2.0
     style_weight: 0
     range_norm: false
     criterion: l1
@@ -169,7 +169,7 @@ train:
   gan_opt:
     type: GANLoss
     gan_type: lsgan 
-    loss_weight: 1.0
+    loss_weight: 0.5
     real_label_val: 0.5
     fake_label_val: -0.5
     
@@ -177,7 +177,7 @@ train:
   d_slow_iters: 1
   d_normal_iters: 1
   d_guessing_threshold: 0.5
-  blur_pixel_loss: True
+  blur_pixel_loss: False
 
 
 # validation settings
