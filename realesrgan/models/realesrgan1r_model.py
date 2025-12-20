@@ -263,20 +263,63 @@ class RealESRGANModel1R(SRGANModel):
         num_refine = self.opt.get('num_refine_steps', 1)  # e.g. set in YAML or default
 
         for refine_step in range(num_refine):
-            # --- 1. choose GTs depending on usm options ---
+            # --- choose GTs depending on usm options ---
             l1_gt = self.gt_usm if self.opt['l1_gt_usm'] else self.gt
             percep_gt = self.gt_usm if self.opt['percep_gt_usm'] else self.gt
             gan_gt = self.gt_usm if self.opt['gan_gt_usm'] else self.gt
-
-            # --- 2. freeze discriminator and optimize generator ---
-            for p in self.net_d.parameters():
-                p.requires_grad = False
 
             with autocast('cuda', dtype=torch.bfloat16):
                 self.output = self.net_g(self.lq)
                 if self.cri_ldl:
                     self.output_ema = self.net_g_ema(self.lq)
 
+                        
+
+            should_update_d = self._should_update_discriminator(current_iter)
+            if should_update_d:
+
+                output_for_d = self.output.detach().clone()
+                
+                for p in self.net_d.parameters():
+                    p.requires_grad = True
+                
+                self.optimizer_d.zero_grad()
+                with autocast('cuda', dtype=torch.bfloat16):
+                    real_d_pred = self.net_d(gan_gt)
+                    fake_d_pred = self.net_d(output_for_d)
+                    
+                l_d_real = self.cri_gan(real_d_pred.float(), True, is_disc=True) 
+                l_d_fake = self.cri_gan(fake_d_pred.float(), False, is_disc=True)
+                d_total_loss_tensor = (l_d_real + l_d_fake)
+                
+                if dist.is_initialized():
+                    loss_to_sync = d_total_loss_tensor.detach().clone()
+                    dist.all_reduce(loss_to_sync, op=dist.ReduceOp.AVG)
+                    d_total_loss = loss_to_sync.item()
+                else:
+                    d_total_loss = d_total_loss_tensor.item()
+
+                if d_total_loss >= self.d_loss_threshold * 0.5:
+                    d_total_loss_tensor.backward()
+                    torch.nn.utils.clip_grad_norm_(self.net_d.parameters(), max_norm=1.0)
+                    self.optimizer_d.step()
+                
+                if self.cached_d_loss_value < 0:
+                    self.cached_d_loss_value = d_total_loss
+                else: # smooth update to make the decision of gan weight and if it should update d more stable and not just depend on 1 batch that has noise
+                    self.cached_d_loss_value = self.cached_d_loss_value * 0.99 + d_total_loss * 0.01
+                self.cached_d_real = l_d_real.detach()
+                self.cached_d_fake = l_d_fake.detach()
+                self.cached_out_d_real = torch.mean(real_d_pred.detach())
+                self.cached_out_d_fake = torch.mean(fake_d_pred.detach())
+            
+            
+            for p in self.net_d.parameters():
+                p.requires_grad = False
+
+
+            with autocast('cuda', dtype=torch.bfloat16):
+                
                 l_g_total = 0
                 loss_dict = OrderedDict()
 
@@ -332,44 +375,6 @@ class RealESRGANModel1R(SRGANModel):
                 if self.ema_decay > 0:
                     self.model_ema(decay=self.ema_decay)
 
-            output_for_d = self.output.detach().clone()
-
-            # --- 3. optimize discriminator as usual ---
-            for p in self.net_d.parameters():
-                p.requires_grad = True
-
-            should_update_d = self._should_update_discriminator(current_iter)
-            if should_update_d:
-                self.optimizer_d.zero_grad()
-                with autocast('cuda', dtype=torch.bfloat16):
-                    real_d_pred = self.net_d(gan_gt)
-                    fake_d_pred = self.net_d(output_for_d)
-                    
-                # Cast outputs to float32 before loss calculation
-                l_d_real = self.cri_gan(real_d_pred.float(), True, is_disc=True) 
-                l_d_fake = self.cri_gan(fake_d_pred.float(), False, is_disc=True)
-                d_total_loss_tensor = (l_d_real + l_d_fake)
-                
-                if dist.is_initialized():
-                    loss_to_sync = d_total_loss_tensor.detach().clone()
-                    dist.all_reduce(loss_to_sync, op=dist.ReduceOp.AVG)
-                    d_total_loss = loss_to_sync.item()
-                else:
-                    d_total_loss = d_total_loss_tensor.item()
-
-                if d_total_loss >= self.d_loss_threshold * 0.5:
-                    d_total_loss_tensor.backward()
-                    torch.nn.utils.clip_grad_norm_(self.net_d.parameters(), max_norm=1.0)
-                    self.optimizer_d.step()
-                
-                if self.cached_d_loss_value < 0:
-                    self.cached_d_loss_value = d_total_loss
-                else: # smooth update to make the decision of gan weight and if it should update d more stable and not just depend on 1 batch that has noise
-                    self.cached_d_loss_value = self.cached_d_loss_value * 0.99 + d_total_loss * 0.01
-                self.cached_d_real = l_d_real.detach()
-                self.cached_d_fake = l_d_fake.detach()
-                self.cached_out_d_real = torch.mean(real_d_pred.detach())
-                self.cached_out_d_fake = torch.mean(fake_d_pred.detach())
 
             loss_dict['l_d_real'] = self.cached_d_real
             loss_dict['l_d_fake'] = self.cached_d_fake
