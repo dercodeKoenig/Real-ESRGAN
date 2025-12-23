@@ -169,7 +169,7 @@ train:
   gan_opt:
     type: GANLoss
     gan_type: lsgan 
-    loss_weight: 1.5
+    loss_weight: 1.0
     real_label_val: 0.5
     fake_label_val: -0.5
     
