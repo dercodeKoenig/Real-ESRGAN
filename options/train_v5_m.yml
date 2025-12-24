@@ -118,14 +118,14 @@ train:
   ema_decay: 0.0
   optim_g:
     type: AdamW
-    lr: 0.00005
+    lr: 0.0001
     weight_decay: 0.000001
     betas: [0.9, 0.99]
     fused: True
   optim_d:
     type: AdamW
     lr: 0.0000125
-    weight_decay: 0.001
+    weight_decay: 0.0001
     betas: [0.9, 0.99]
 
   scheduler:
@@ -135,7 +135,7 @@ train:
 
   total_iter: 8000000
   warmup_iter: 1000
-  gradient_accumulation_steps: 4
+  gradient_accumulation_steps: 16
   gan_warmup_iters: 500
   percept_warmup_iters: 500
   min_scale: 1
