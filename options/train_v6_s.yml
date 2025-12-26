@@ -1,5 +1,5 @@
 # general settings
-name: train_v6_m
+name: train_v6_s
 model_type: RealESRGANModel1R
 num_gpu: auto
 scale: 4 # used in validation ( i guess )
