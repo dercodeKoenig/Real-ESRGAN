@@ -103,6 +103,7 @@ network_d:
   depth: 4
   skip_connection: True
   final_act: tanh
+  use_spectral_norm: False
 
 # path
 path:
@@ -123,9 +124,9 @@ train:
     betas: [0.9, 0.99]
     fused: True
   optim_d:
-    type: Adam
+    type: AdamW
     lr: 0.000025
-    weight_decay: 0.0
+    weight_decay: 0.01
     betas: [0.9, 0.99]
 
   scheduler:
