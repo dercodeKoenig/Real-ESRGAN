@@ -4,13 +4,13 @@ from torch import nn as nn
 from torch.nn import functional as F
 from torch.nn.utils import spectral_norm
 
-
 # --- Helper Residual Block ---
 class ResidualBlock(nn.Module):
     """A standard two-convolutional-layer residual block."""
 
     def __init__(self, channels, norm_layer=spectral_norm):
         super().__init__()
+        # norm_layer will either be spectral_norm or an identity lambda
         self.conv1 = norm_layer(nn.Conv2d(channels, channels, kernel_size=3, padding=1))
         self.conv2 = norm_layer(nn.Conv2d(channels, channels, kernel_size=3, padding=1))
         self.relu = nn.LeakyReLU(0.2, inplace=True)
@@ -26,31 +26,34 @@ class ResidualBlock(nn.Module):
 @ARCH_REGISTRY.register()
 class AdvancedUNetDiscriminator(nn.Module):
     """
-    Advanced U-Net Discriminator with Spectral Normalization, Dynamic Depth,
-    Residual Blocks, and configurable final activation.
-
+    Advanced U-Net Discriminator with optional Spectral Normalization.
+    
     Arguments:
-        num_in_ch (int): Channel number of inputs. Default: 3.
-        num_feat (int): Channel number of base intermediate features. Default: 64.
-        depth (int): Number of downsampling/upsampling stages (U-Net depth). Default: 4.
-        skip_connection (bool): Whether to use skip connections between U-Net. Default: True.
-        final_act (str): Final activation function ('sigmoid', 'tanh', or 'linear'). Default: 'linear'.
+        ...
+        use_spectral_norm (bool): Whether to apply spectral normalization. Default: True.
     """
 
-    def __init__(self, num_in_ch, num_feat=64, depth=4, skip_connection=True, final_act='linear', noise_scale = 0.01):
+    def __init__(self, num_in_ch, num_feat=64, depth=4, skip_connection=True, final_act='linear', noise_scale=0.01, use_spectral_norm=True):
         super().__init__()
         self.skip_connection = skip_connection
         self.depth = depth
-        norm = spectral_norm
         self.final_act = final_act.lower()
         self.noise_scale = noise_scale
         
+        # --- Toggle Spectral Norm ---
+        if use_spectral_norm:
+            norm = spectral_norm
+        else:
+            # Identity function: does nothing to the layer, just returns it
+            norm = lambda x: x 
+
+        # --- Activation Logic ---
         if self.final_act == 'sigmoid':
             self.activation = nn.Sigmoid()
         elif self.final_act == 'tanh':
             self.activation = nn.Tanh()
         elif self.final_act == 'linear':
-            self.activation = lambda x: x # Identity function for linear
+            self.activation = lambda x: x 
         else:
             raise ValueError(f"Unsupported final_act: {final_act}. Must be 'sigmoid', 'tanh', or 'linear'.")
 
@@ -69,6 +72,7 @@ class AdvancedUNetDiscriminator(nn.Module):
             out_ch = num_feat * (2 ** (i + 1))
             block = nn.Sequential(
                 ResidualBlock(in_ch, norm_layer=norm),
+                # norm() wraps the conv layer; if identity, it returns the raw Conv2d
                 norm(nn.Conv2d(in_ch, out_ch, kernel_size=4, stride=2, padding=1)),
                 ResidualBlock(out_ch, norm_layer=norm)
             )
@@ -90,7 +94,6 @@ class AdvancedUNetDiscriminator(nn.Module):
             block = nn.Sequential(
                 ResidualBlock(in_ch, norm_layer=norm),
                 ResidualBlock(in_ch, norm_layer=norm),
-                # Note: Conv2d is NOT a Transposed Conv, the upsampling is done via F.interpolate in forward
                 norm(nn.Conv2d(in_ch, out_ch, kernel_size=3, stride=1, padding=1)), 
             )
             self.up_blocks.append(block)
@@ -99,14 +102,15 @@ class AdvancedUNetDiscriminator(nn.Module):
         self.extra_convs = nn.Sequential(
             ResidualBlock(num_feat, norm_layer=norm),
             ResidualBlock(num_feat, norm_layer=norm),
-            nn.Conv2d(num_feat, 1, 3, 1, 1)  # Final classification layer (before activation)
+            nn.Conv2d(num_feat, 1, 3, 1, 1)  # Final classification layer
         )
 
     def forward(self, x):
+        # Noise injection
+        if self.noise_scale > 0:
+            x = x + torch.randn_like(x) * self.noise_scale
 
-        x = x + torch.randn_like(x) * self.noise_scale
-
-        x_stages = []  # Store outputs for skip connections
+        x_stages = [] 
 
         # Initial feature extraction
         x = self.initial_conv(x)
@@ -125,13 +129,12 @@ class AdvancedUNetDiscriminator(nn.Module):
             x = up_block(x)
 
             if self.skip_connection:
+                # Add skip connection from corresponding downsampling stage
                 x = x + x_stages[-1]
                 del x_stages[-1]
 
         # Extra Convolutions / Output
         out = self.extra_convs(x)
-        
-        # Apply the selected final activation
         out = self.activation(out) 
         
         return out
