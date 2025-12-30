@@ -104,6 +104,7 @@ network_d:
   skip_connection: True
   final_act: tanh
   use_spectral_norm: False
+  noise_scale: 0.05
 
 # path
 path:
