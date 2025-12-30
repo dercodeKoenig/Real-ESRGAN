@@ -31,7 +31,7 @@ class RealESRGANer1x():
         else:
             print("test mode - no model weights loaded!")
         model.eval()
-        model.to(self.device)
+        #model.to(self.device) # todo: MANUAL to cuda in forward to support large images layer by layer
         self.model = model
 
     def pre_process(self, img):
