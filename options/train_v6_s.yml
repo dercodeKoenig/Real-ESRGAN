@@ -156,14 +156,14 @@ train:
     type: PerceptualLoss
     layer_weights:
       # before relu
-      'conv1_2': 0.05
+      'conv1_2': 0.1
       'conv2_2': 0.1
-      'conv3_4': 0.2
-      'conv4_4': 0.5
+      'conv3_4': 1.0
+      'conv4_4': 1.0
       'conv5_4': 1.0
     vgg_type: vgg19
     use_input_norm: true
-    perceptual_weight: 2.0
+    perceptual_weight: 1.0
     style_weight: 0
     range_norm: false
     criterion: l1
