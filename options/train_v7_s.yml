@@ -33,7 +33,7 @@ gray_noise_prob2: 0.4
 jpeg_range2: [30, 95]
 
 gt_size: 512
-queue_size: 32
+queue_size: 12
 
 # dataset and data loader settings
 datasets:
@@ -89,11 +89,11 @@ network_g:
   num_in_ch: 3
   highway_channels_base: 32
   processing_channels_base: 16
-  num_grow_ch_base: 8
+  num_grow_ch_base: 12
   ae_rrdb_blocks: 6
-  ae_channel_multipliers: [1,2,4,8,16]
+  ae_channel_multipliers: [1,4,8,16,24]
   use_attention: True
-  body_rrdb_blocks: 6
+  body_rrdb_blocks: 8
   res1_add: False
 
 network_d:

@@ -48,11 +48,11 @@ class ResidualDenseBlock(nn.Module):
 
     def __init__(self, num_feat=64, num_grow_ch=32):
         super(ResidualDenseBlock, self).__init__()
-        self.conv1 = nn.Conv2d(num_feat, num_grow_ch, 3, 1, 1, padding_mode='reflect')
-        self.conv2 = nn.Conv2d(num_feat + num_grow_ch, num_grow_ch, 3, 1, 1, padding_mode='reflect')
-        self.conv3 = nn.Conv2d(num_feat + 2 * num_grow_ch, num_grow_ch, 3, 1, 1, padding_mode='reflect')
-        self.conv4 = nn.Conv2d(num_feat + 3 * num_grow_ch, num_grow_ch, 3, 1, 1, padding_mode='reflect')
-        self.conv5 = nn.Conv2d(num_feat + 4 * num_grow_ch, num_feat, 3, 1, 1, padding_mode='reflect')
+        self.conv1 = nn.Conv2d(num_feat, num_grow_ch, 3, 1, 1, padding_mode='zeros')
+        self.conv2 = nn.Conv2d(num_feat + num_grow_ch, num_grow_ch, 3, 1, 1, padding_mode='zeros')
+        self.conv3 = nn.Conv2d(num_feat + 2 * num_grow_ch, num_grow_ch, 3, 1, 1, padding_mode='zeros')
+        self.conv4 = nn.Conv2d(num_feat + 3 * num_grow_ch, num_grow_ch, 3, 1, 1, padding_mode='zeros')
+        self.conv5 = nn.Conv2d(num_feat + 4 * num_grow_ch, num_feat, 3, 1, 1, padding_mode='zeros')
 
         self.lrelu = nn.LeakyReLU(negative_slope=0.2, inplace=True)
 
@@ -64,7 +64,7 @@ class ResidualDenseBlock(nn.Module):
         x2 = self.lrelu(self.conv2(torch.cat((x, x1), 1)))
         x3 = self.lrelu(self.conv3(torch.cat((x, x1, x2), 1)))
         x4 = self.lrelu(self.conv4(torch.cat((x, x1, x2, x3), 1)))
-        x5 = self.conv5(torch.cat((x, x1, x2, x3, x4), 1))
+        x5 = self.lrelu(self.conv5(torch.cat((x, x1, x2, x3, x4), 1)))
         return x5 * 0.2 + x
 
 
@@ -86,7 +86,7 @@ class HighwayRRDB(nn.Module):
         self.dc3 = nn.Conv2d(processing_channels, num_grow_ch, 3, 1, 3, dilation=3, padding_mode='reflect')
         self.dc4 = nn.Conv2d(processing_channels, num_grow_ch, 3, 1, 4, dilation=4, padding_mode='reflect')
         # Fusion layer to combine the outputs of the dilated convolutions
-        self.context_fusion = nn.Conv2d(num_grow_ch * 4, processing_channels, 3, 1, 1, padding_mode='reflect')
+        self.context_fusion = nn.Conv2d(num_grow_ch * 4, processing_channels, 3, 1, 1, padding_mode='zeros')
 
         # Compression: Highway → Processing
         self.compress = nn.Conv2d(highway_channels, processing_channels, kernel_size=1)
@@ -324,7 +324,6 @@ class RRDB_UNet_v4(nn.Module):
 
             if self.memory_efficient_inference_device != None:
                 pbar.update(1)
-                input()
 
 
         for element in self.body:
@@ -337,7 +336,6 @@ class RRDB_UNet_v4(nn.Module):
 
             if self.memory_efficient_inference_device != None:
                 pbar.update(1)
-                input()
 
 
         # run through decoder and insert residuals
@@ -357,7 +355,6 @@ class RRDB_UNet_v4(nn.Module):
             if self.inference:
                 pbar.update(1)
                 torch.cuda.empty_cache() # because the residual was deleted, free up the gpu memory
-                input()
 
         # Instead of just adding the original image at the very end, we concatenate features + img here so that it can do some final refinement with consideration of the original image
         feat = torch.cat([feat, res1], dim=1)
