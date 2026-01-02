@@ -126,7 +126,7 @@ train:
     fused: True
   optim_d:
     type: AdamW
-    lr: 0.0000025
+    lr: 0.00001
     weight_decay: 0.001
     betas: [0.9, 0.99]
 
