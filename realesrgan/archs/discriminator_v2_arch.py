@@ -105,9 +105,9 @@ class AdvancedUNetDiscriminator(nn.Module):
             nn.Conv2d(num_feat, 1, 3, 1, 1)  # Final classification layer
         )
 
-    def forward(self, x):
+    def forward(self, x, add_noise):
         # Noise injection
-        if self.noise_scale > 0:
+        if self.noise_scale > 0 and add_noise:
             x = x + torch.randn_like(x) * self.noise_scale
 
         x_stages = [] 
