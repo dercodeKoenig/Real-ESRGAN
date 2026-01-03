@@ -285,8 +285,8 @@ class RealESRGANModel1R(SRGANModel):
                 
                 self.optimizer_d.zero_grad()
                 with autocast('cuda', dtype=torch.bfloat16):
-                    real_d_pred = self.net_d(gan_gt)
-                    fake_d_pred = self.net_d(output_for_d)
+                    real_d_pred = self.net_d(gan_gt, add_noise = True)
+                    fake_d_pred = self.net_d(output_for_d, add_noise = True)
                     
                 l_d_real = self.cri_gan(real_d_pred.float(), True, is_disc=True) 
                 l_d_fake = self.cri_gan(fake_d_pred.float(), False, is_disc=True)
@@ -353,7 +353,7 @@ class RealESRGANModel1R(SRGANModel):
                         loss_dict['l_g_style'] = l_g_style
 
                 if current_iter > self.gan_warmup_iters and self.enable_gan and self.cached_d_loss_value < self.d_guessing_threshold :
-                    fake_g_pred = self.net_d(self.output)
+                    fake_g_pred = self.net_d(self.output, add_noise = False)
                     l_g_gan = self.cri_gan(fake_g_pred, True, is_disc=False)
                     l_g_total += l_g_gan
                     loss_dict['l_g_gan'] = l_g_gan
