@@ -33,7 +33,7 @@ class AdvancedUNetDiscriminator(nn.Module):
         use_spectral_norm (bool): Whether to apply spectral normalization. Default: True.
     """
 
-    def __init__(self, num_in_ch, num_feat=64, depth=4, skip_connection=True, final_act='linear', noise_scale=0.01, use_spectral_norm=True):
+    def __init__(self, num_in_ch, num_feat=64, depth=4, skip_connection=True, final_act='linear', noise_scale=0.01, use_spectral_norm=True, max_feat = 512):
         super().__init__()
         self.skip_connection = skip_connection
         self.depth = depth
@@ -68,19 +68,23 @@ class AdvancedUNetDiscriminator(nn.Module):
         # --- Downsampling Path ---
         self.down_blocks = nn.ModuleList()
         for i in range(depth):
-            in_ch = num_feat * (2 ** i)
-            out_ch = num_feat * (2 ** (i + 1))
+            in_ch = min(max_feat, num_feat * (2 ** i))
+            out_ch = min(max_feat, num_feat * (2 ** (i + 1)))
             block = nn.Sequential(
+                ResidualBlock(in_ch, norm_layer=norm),
                 ResidualBlock(in_ch, norm_layer=norm),
                 # norm() wraps the conv layer; if identity, it returns the raw Conv2d
                 norm(nn.Conv2d(in_ch, out_ch, kernel_size=4, stride=2, padding=1)),
+                ResidualBlock(out_ch, norm_layer=norm),
                 ResidualBlock(out_ch, norm_layer=norm)
             )
             self.down_blocks.append(block)
 
         # --- Bottleneck (Deepest Layer) ---
-        bottleneck_ch = num_feat * (2 ** depth)
+        bottleneck_ch = min(max_feat, num_feat * (2 ** depth))
         self.bottleneck = nn.Sequential(
+            ResidualBlock(bottleneck_ch, norm_layer=norm),
+            ResidualBlock(bottleneck_ch, norm_layer=norm),
             ResidualBlock(bottleneck_ch, norm_layer=norm),
             ResidualBlock(bottleneck_ch, norm_layer=norm)
         )
@@ -88,8 +92,8 @@ class AdvancedUNetDiscriminator(nn.Module):
         # --- Upsampling Path ---
         self.up_blocks = nn.ModuleList()
         for i in range(depth):
-            in_ch = num_feat * (2 ** (depth - i))
-            out_ch = num_feat * (2 ** (depth - 1 - i))
+            in_ch = min(max_feat, num_feat * (2 ** (depth - i)))
+            out_ch = min(max_feat, num_feat * (2 ** (depth - 1 - i)))
 
             block = nn.Sequential(
                 ResidualBlock(in_ch, norm_layer=norm),
