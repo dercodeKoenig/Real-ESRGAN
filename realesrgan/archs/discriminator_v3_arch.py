@@ -24,7 +24,7 @@ class ResidualBlock(nn.Module):
 
 # --- Advanced Discriminator ---
 @ARCH_REGISTRY.register()
-class AdvancedUNetDiscriminator(nn.Module):
+class AdvancedUNetDiscriminatorV3(nn.Module):
     """
     Advanced U-Net Discriminator with optional Spectral Normalization.
     
