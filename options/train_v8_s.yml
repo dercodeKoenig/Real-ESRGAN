@@ -99,7 +99,7 @@ network_g:
 network_d:
   type: AdvancedUNetDiscriminatorV3
   num_in_ch: 3
-  num_feat: 64
+  num_feat: 32
   depth: 4
   skip_connection: True
   final_act: tanh
