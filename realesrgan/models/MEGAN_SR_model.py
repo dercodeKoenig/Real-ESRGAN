@@ -186,7 +186,7 @@ class MEGAN_SR(SRGANModel):
     def nondist_validation(self, dataloader, current_iter, tb_logger, save_img):
         # do not use the synthetic process during validation
         self.is_train = False
-        super(RealESRGANModel1R, self).nondist_validation(dataloader, current_iter, tb_logger, save_img)
+        super(MEGAN_SR, self).nondist_validation(dataloader, current_iter, tb_logger, save_img)
         self.is_train = True
 
     @torch.no_grad()
@@ -227,6 +227,8 @@ class MEGAN_SR(SRGANModel):
                 
     def optimize_parameters(self, current_iter):
     
+        loss_dict = OrderedDict()
+        
         # --- choose GTs depending on usm options ---
         l1_gt = self.gt_usm if self.opt['l1_gt_usm'] else self.gt
         percep_gt = self.gt_usm if self.opt['percep_gt_usm'] else self.gt
@@ -257,6 +259,13 @@ class MEGAN_SR(SRGANModel):
             d_total_loss_tensor.backward()
             torch.nn.utils.clip_grad_norm_(self.net_d.parameters(), max_norm=1.0)
             self.optimizer_d.step()
+
+        
+            loss_dict['l_d_real'] = l_d_real.detach()
+            loss_dict['l_d_fake'] = l_d_fake.detach()
+            loss_dict['out_d_real'] = torch.mean(real_d_pred.detach())
+            loss_dict['out_d_fake'] = torch.mean(fake_d_pred.detach())
+            loss_dict['d_total_loss'] = d_total_loss_tensor.detach()
         
         
         for p in self.net_d.parameters():
@@ -266,7 +275,6 @@ class MEGAN_SR(SRGANModel):
         with autocast('cuda', dtype=torch.bfloat16):
             
             l_g_total = 0
-            loss_dict = OrderedDict()
 
             # pixel / ldl / perceptual / gan losses as in your code
             if self.cri_pix:
@@ -320,13 +328,6 @@ class MEGAN_SR(SRGANModel):
 
             if self.ema_decay > 0:
                 self.model_ema(decay=self.ema_decay)
-
-        
-        loss_dict['l_d_real'] = l_d_real.detach()
-        loss_dict['l_d_fake'] = l_d_fake.detach()
-        loss_dict['out_d_real'] = torch.mean(real_d_pred.detach())
-        loss_dict['out_d_fake'] = torch.mean(fake_d_pred.detach())
-        loss_dict['d_total_loss'] = d_total_loss_tensor.detach()
 
         self.log_dict = self.reduce_loss_dict(loss_dict)
 
