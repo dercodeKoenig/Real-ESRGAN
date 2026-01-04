@@ -150,7 +150,7 @@ train:
   # losses
   pixel_opt:
     type: L1Loss
-    loss_weight: 1.0
+    loss_weight: 0.1
     reduction: mean
   # perceptual loss (content and style losses)
   perceptual_opt: 

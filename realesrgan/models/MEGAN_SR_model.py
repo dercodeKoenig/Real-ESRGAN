@@ -326,7 +326,7 @@ class MEGAN_SR(SRGANModel):
         loss_dict['l_d_fake'] = l_d_fake.detach()
         loss_dict['out_d_real'] = torch.mean(real_d_pred.detach())
         loss_dict['out_d_fake'] = torch.mean(fake_d_pred.detach())
-        loss_dict['d_total_loss'] = d_total_loss.detach()
+        loss_dict['d_total_loss'] = d_total_loss_tensor.detach()
 
         self.log_dict = self.reduce_loss_dict(loss_dict)
 
