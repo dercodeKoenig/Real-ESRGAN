@@ -318,8 +318,6 @@ class RRDB_UNet_v4_t(nn.Module):
     def forward(self, x, t):
         B, C, H, W = x.shape
 
-        t_emb = self.timestep_embed(t)
-
         # compute target size (next multiple of w_h_multiple)
         target_H = ((H + self.w_h_multiple - 1) // self.w_h_multiple) * self.w_h_multiple
         target_W = ((W + self.w_h_multiple - 1) // self.w_h_multiple) * self.w_h_multiple
@@ -334,6 +332,15 @@ class RRDB_UNet_v4_t(nn.Module):
         feat = F.pad(x, (pad_left, pad_right, pad_top, pad_bottom), mode='reflect')
 
         res1 = feat
+        
+
+        if self.memory_efficient_inference_device != None:
+            self.timestep_embed.to(self.memory_efficient_inference_device)
+            
+        t_emb = self.timestep_embed(t)
+
+        if self.memory_efficient_inference_device != None:
+            self.timestep_embed.to("cpu")
         
         if self.memory_efficient_inference_device != None:
             self.prep.to(self.memory_efficient_inference_device)
