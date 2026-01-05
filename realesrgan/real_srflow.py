@@ -51,10 +51,11 @@ class RealSRFLOW():
         outputs = []
         
         with torch.no_grad():
-            for i in range(self.num_steps):
+            for i in tqdm(range(self.num_steps)):
                 t = steps[i].expand(batch_size)
                 
                 # 3. Prepare 6-channel input
+                #xt = xt + torch.randn_like(xt) * 0.01 * (1-t)
                 model_input = torch.cat([xt, lq], dim=1)
                 
                 # 4. Predict velocity (v)
