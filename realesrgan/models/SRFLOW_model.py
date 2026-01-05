@@ -277,7 +277,11 @@ class SRFLOW(SRModel):
         dt = 1.0 / sampling_steps 
         
         # Select model (EMA preferred)
-        model = self.net_g_ema if hasattr(self, 'net_g_ema') else self.net_g
+        has_ema = hasattr(self, 'net_g_ema')
+        if has_ema:
+            model = self.net_g_ema
+        else:
+            model = self.net_g
         model.eval()
 
         with torch.no_grad():
@@ -299,7 +303,7 @@ class SRFLOW(SRModel):
                 xt = xt + dt * v_pred
         
         # Reset model to training mode if necessary
-        if self.is_train:
+        if not has_ema:
             self.net_g.train()
 
         # Clamp output to valid range
