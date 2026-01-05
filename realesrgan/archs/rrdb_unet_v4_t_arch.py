@@ -8,28 +8,6 @@ from basicsr.archs.arch_util import default_init_weights
 
 import math
 
-
-class NoiseInjectionLayer(nn.Module):
-    def __init__(self, channels):
-        """
-        Args:
-            channels (int): Number of input channels (e.g., 64, 1200, etc.)
-        """
-        super().__init__()
-        self.scale_map = nn.Conv2d(channels, channels, kernel_size=3, padding=1)
-
-    def forward(self, x):
-        """
-        Args:
-            x (Tensor): Input feature map of shape (B, C, H, W)
-        """
-        noise = torch.randn_like(x)
-        noise = torch.tanh(noise*0.1)  # now bounded between -1 and 1, prevent inf, but scaled by 0.1 before to keep distribution
-
-        # 2. Scale the noise by the learned weights and add to input
-        return x + self.scale_map(x) * noise
-
-
 class TimestepEmbedding(nn.Module):
     def __init__(self, hidden_dim):
         super().__init__()
@@ -247,9 +225,6 @@ class RRDB_UNet_v4_t(nn.Module):
         self.body = nn.ModuleList()
         for _ in range(body_rrdb_blocks):
             self.body.append(
-                NoiseInjectionLayer(highway_channels_base * body_channel_multiplier)
-            )
-            self.body.append(
                 HighwayRRDB(
                     highway_channels=highway_channels_base * body_channel_multiplier,
                     processing_channels=processing_channels_base * body_channel_multiplier,
@@ -279,9 +254,6 @@ class RRDB_UNet_v4_t(nn.Module):
 
             ## rrdbs
             for _ in range(ae_rrdb_blocks):
-                decoder_block.append(
-                    NoiseInjectionLayer(highway_channels_base * current_multiplier)
-                )
                 decoder_block.append(
                     HighwayRRDB(
                         highway_channels=highway_channels_base * current_multiplier,
