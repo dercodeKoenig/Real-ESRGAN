@@ -135,7 +135,7 @@ train:
 
 # validation settings
 val:
-   val_freq: 256
+   val_freq: 1000
    save_img: True
 
    metrics:
@@ -156,7 +156,7 @@ val:
 # logging settings
 logger:
   print_freq: 64
-  save_checkpoint_freq: 1000
+  save_checkpoint_freq: 10000
   use_tb_logger: true
 
 # dist training settings
