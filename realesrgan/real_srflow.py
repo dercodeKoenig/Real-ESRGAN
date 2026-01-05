@@ -40,8 +40,6 @@ class RealSRFLOW():
         Matches training: t=0 (Noise) -> t=1 (Clean)
         """
         batch_size, _, h, w = lq.shape
-
-        lq.to(self.device)
         
         # 1. Start with pure Gaussian noise (xt at t=0)
         xt = torch.randn_like(lq)
