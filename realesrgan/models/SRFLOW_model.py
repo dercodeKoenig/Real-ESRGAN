@@ -29,8 +29,7 @@ class SRFLOW(SRModel):
 
         if(opt['train'].get("use_compile", True)):
             print("using model compile")
-            #self.net_g.compile(dynamic=False) 
-            self.net_g.compile(mode="max-autotune", dynamic=False, fullgraph=True)
+            self.net_g.compile(dynamic=False) 
 
         self.jpeger = DiffJPEG(differentiable=False).to(self.device)  # simulate JPEG compression artifacts
         self.usm_sharpener = USMSharp().to(self.device)  # do usm sharpening
