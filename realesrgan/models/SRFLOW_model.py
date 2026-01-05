@@ -187,7 +187,6 @@ class SRFLOW(SRModel):
                 #break # Checking one parameter is usually enough to detect divergence
                 
     def optimize_parameters(self, current_iter):
-        self.optimizer_g.zero_grad()
         loss_dict = OrderedDict()
         
         # 1. Setup Rectified Flow variables
