@@ -367,10 +367,10 @@ class RRDB_UNet_v4_t(nn.Module):
             if self.memory_efficient_inference_device != None:
                 element.to(self.memory_efficient_inference_device)
                 
-                if isinstance(element, HighwayRRDB):
-                    feat = element(feat, t_emb) # Pass t_emb
-                else:
-                    feat = element(feat) # Standard Conv/Shuffle
+            if isinstance(element, HighwayRRDB):
+                feat = element(feat, t_emb) # Pass t_emb
+            else:
+                feat = element(feat) # Standard Conv/Shuffle
                     
             if self.memory_efficient_inference_device != None:
                 element.to("cpu")
