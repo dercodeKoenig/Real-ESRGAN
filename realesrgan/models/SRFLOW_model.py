@@ -43,6 +43,10 @@ class SRFLOW(SRModel):
         self._accum_steps = 0  # internal counter for gradient accumulation
         print("gradient_accumulation_steps:",  self.gradient_accumulation_steps)
 
+        # Get dropout probability (default to 0.1 if not specified)
+        self.cond_dropout_prob = opt['train'].get('cond_dropout_prob', 0.1)
+        print("cond_dropout_prob:", self.cond_dropout_prob)
+
         self.check_ddp_consistency()
 
     @torch.no_grad()
@@ -208,7 +212,17 @@ class SRFLOW(SRModel):
         # 3. Prepare Model Input
         # Concat the noisy image (xt) and the LR condition (lq) 
         # This results in a tensor with (C_xt + C_lq) channels (usually 3+3=6)
-        model_input = torch.cat([xt, self.lq], dim=1)
+        cond = self.lq
+        if self.cond_dropout_prob > 0:
+            # Create a mask: 1 for keep, 0 for drop
+            # We use a random check per-sample
+            mask = torch.bernoulli(torch.ones(b, 1, 1, 1, device=device) * (1 - self.cond_dropout_prob))
+            cond = cond * mask 
+    
+        model_input = torch.cat([xt, cond], dim=1)
+        
+
+        
         
         # 4. Forward Pass
         with autocast('cuda', dtype=torch.bfloat16):
