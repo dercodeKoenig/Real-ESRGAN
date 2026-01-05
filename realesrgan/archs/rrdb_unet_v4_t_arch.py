@@ -189,7 +189,7 @@ class HighwayRRDB(nn.Module):
 @ARCH_REGISTRY.register()
 class RRDB_UNet_v4_t(nn.Module):
 
-    def __init__(self, num_in_ch, highway_channels_base=32, processing_channels_base=16, num_grow_ch_base=8,
+    def __init__(self, num_in_ch, num_out_ch, highway_channels_base=32, processing_channels_base=16, num_grow_ch_base=8,
                  ae_rrdb_blocks=4, ae_channel_multipliers = [1,2,4,8,16],use_attention=True, body_rrdb_blocks=12, res1_add = True, memory_efficient_inference_device = None, inference = False):
 
         super(RRDB_UNet_v4_t, self).__init__()
@@ -311,7 +311,7 @@ class RRDB_UNet_v4_t(nn.Module):
             nn.LeakyReLU(negative_slope=0.01, inplace=True),
             nn.Conv2d(final_inner_ch, final_inner_ch, 3, 1, 1, padding_mode='reflect'),
             nn.LeakyReLU(negative_slope=0.01, inplace=True),
-            nn.Conv2d(final_inner_ch, num_in_ch, 1, 1, 0)
+            nn.Conv2d(final_inner_ch, num_out_ch, 1, 1, 0)
         )
 
 
@@ -333,16 +333,7 @@ class RRDB_UNet_v4_t(nn.Module):
         # pad input (reflect padding is usually safest for images)
         feat = F.pad(x, (pad_left, pad_right, pad_top, pad_bottom), mode='reflect')
 
-        if(self.memory_efficient_inference_device != None):
-            # Total number of steps
-            total_steps = len(self.encoder)+len(self.body)+len(self.decoder)+1
-            # Create a manual progress bar
-            pbar = tqdm(total=total_steps)
-
-
         res1 = feat
-
-        
         
         if self.memory_efficient_inference_device != None:
             self.prep.to(self.memory_efficient_inference_device)
@@ -371,9 +362,6 @@ class RRDB_UNet_v4_t(nn.Module):
                     torch.cuda.empty_cache()
             residuals.append(feat)
 
-            if self.memory_efficient_inference_device != None:
-                pbar.update(1)
-
 
         for element in self.body:
             if self.memory_efficient_inference_device != None:
@@ -387,9 +375,6 @@ class RRDB_UNet_v4_t(nn.Module):
             if self.memory_efficient_inference_device != None:
                 element.to("cpu")
                 torch.cuda.empty_cache()
-
-            if self.memory_efficient_inference_device != None:
-                pbar.update(1)
 
 
         # run through decoder and insert residuals
@@ -412,7 +397,6 @@ class RRDB_UNet_v4_t(nn.Module):
                     torch.cuda.empty_cache()
 
             if self.inference:
-                pbar.update(1)
                 torch.cuda.empty_cache() # because the residual was deleted, free up the gpu memory
 
         # Instead of just adding the original image at the very end, we concatenate features + img here so that it can do some final refinement with consideration of the original image
@@ -428,10 +412,6 @@ class RRDB_UNet_v4_t(nn.Module):
 
         if self.res1_add:
             feat = feat + res1 # and also add the original image at the end back so it only needs to learn the difference
-
-        if self.memory_efficient_inference_device != None:
-                pbar.update(1)
-                pbar.close()
 
         # crop back to original size
         feat = feat[:, :, pad_top:pad_top + H, pad_left:pad_left + W]

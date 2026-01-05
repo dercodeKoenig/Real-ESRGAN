@@ -5,6 +5,7 @@ import os
 import queue
 import threading
 import torch
+from tqdm import tqdm
 from basicsr.utils.download_util import load_file_from_url
 from torch.nn import functional as F
 
@@ -48,8 +49,10 @@ class RealSRFLOW():
         steps = torch.linspace(1.0, 0.0, self.num_steps + 1).to(self.device)
         dt = 1.0 / self.num_steps # The size of each step
 
+        outputs = []
+        
         with torch.no_grad():
-            for i in range(self.num_steps):
+            for i in tqdm(range(self.num_steps)):
                 t = steps[i].expand(batch_size)
                 
                 # 3. Prepare 6-channel input: concat(noisy_xt, guide_lq)
@@ -63,17 +66,18 @@ class RealSRFLOW():
                 # 5. Euler Step: move xt toward the clean image
                 # x_{t-dt} = x_t - (dt * v_pred)
                 xt = xt - dt * v_pred
+                outputs.append(xt)
 
-        self.output = xt
+        return outputs
 
-    def post_process(self):
+    def post_process(self, img):
         # Remove padding
         if self.pre_pad != 0:
-            _, _, h, w = self.output.size()
-            self.output = self.output[:, :, self.pre_pad:h - self.pre_pad, self.pre_pad:w - self.pre_pad]
+            _, _, h, w = img.size()
+            output_img = img[:, :, self.pre_pad:h - self.pre_pad, self.pre_pad:w - self.pre_pad]
 
         # Convert back to numpy (H, W, C)
-        output_img = self.output.data.squeeze().float().cpu().clamp_(0, 1).numpy()
+        output_img = output_img.data.squeeze().float().cpu().clamp_(0, 1).numpy()
         return np.transpose(output_img, (1, 2, 0))
 
     @torch.no_grad()
@@ -84,9 +88,14 @@ class RealSRFLOW():
 
         # 2. Run the pipeline
         lq_tensor = self.pre_process(img)
-        self.process(lq_tensor) # This now runs the multi-step sampler
-        output_img = self.post_process()
+        processed = self.process(lq_tensor) # This now runs the multi-step sampler
+        output_imgs = []
+        for i in processed:
+            output = self.post_process(i)
+            # 3. Convert back to BGR 8-bit
+            output = cv2.cvtColor(output, cv2.COLOR_RGB2BGR)
+            output = (output * 255.0).round().astype(np.uint8)
+            
+            output_imgs.append(output)
         
-        # 3. Convert back to BGR 8-bit
-        output_img = cv2.cvtColor(output_img, cv2.COLOR_RGB2BGR)
-        return (output_img * 255.0).round().astype(np.uint8)
+        return output_imgs
