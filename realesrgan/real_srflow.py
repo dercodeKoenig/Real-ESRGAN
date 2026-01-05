@@ -37,39 +37,39 @@ class RealSRFLOW():
     def process(self, lq):
         """
         The Sampling Loop (Euler Method)
-        lq: The low-quality guide image (B, 3, H, W)
+        Matches training: t=0 (Noise) -> t=1 (Clean)
         """
         batch_size, _, h, w = lq.shape
         
-        # 1. Start with pure Gaussian noise (xt at t=1.0)
-        # In Flow Matching, t=1 is noise, t=0 is clean
+        # 1. Start with pure Gaussian noise (xt at t=0)
         xt = torch.randn_like(lq)
         
-        # 2. Define our timesteps (from 1.0 down to 0.0)
-        steps = torch.linspace(1.0, 0.0, self.num_steps + 1).to(self.device)
-        dt = 1.0 / self.num_steps # The size of each step
-
+        # 2. Define timesteps (from 0.0 up to 1.0)
+        steps = torch.linspace(0.0, 1.0, self.num_steps + 1).to(self.device)
+        dt = 1.0 / self.num_steps 
+    
         outputs = []
         
         with torch.no_grad():
-            for i in tqdm(range(self.num_steps)):
+            for i in range(self.num_steps):
                 t = steps[i].expand(batch_size)
                 
-                # 3. Prepare 6-channel input: concat(noisy_xt, guide_lq)
+                # 3. Prepare 6-channel input
                 model_input = torch.cat([xt, lq], dim=1)
                 
                 # 4. Predict velocity (v)
-                # Your UNet forward(x, t) handles the embedding internally
                 with torch.amp.autocast(self.device):
                     v_pred = self.model(model_input, t)
                 
-                # 5. Euler Step: move xt toward the clean image
-                # x_{t-dt} = x_t - (dt * v_pred)
-                xt = xt - dt * v_pred
+                # 5. Euler Step: move xt forward toward t=1
+                # x_{t+dt} = x_t + (dt * v_pred)
+                xt = xt + dt * v_pred
+                
                 outputs.append(xt)
-
+    
         return outputs
 
+        
     def post_process(self, img):
         # Remove padding
         if self.pre_pad != 0:

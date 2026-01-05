@@ -244,3 +244,50 @@ class SRFLOW(SRModel):
 
         if current_iter % 1000 == 0:
             self.check_ddp_consistency()
+
+
+
+    def test(self):
+        lq = self.lq
+        sampling_steps = 5  # Renamed to avoid conflict with 'steps' tensor
+
+        batch_size, _, h, w = lq.shape
+        device = lq.device
+        
+        # 1. Start with pure Gaussian noise (X0)
+        # In your training: t=0 is noise, t=1 is clean (GT)
+        xt = torch.randn_like(lq)
+        
+        # 2. Define timesteps (from 0.0 up to 1.0)
+        # We start at 0 (noise) and add velocity to reach 1 (clean)
+        time_steps = torch.linspace(0.0, 1.0, sampling_steps + 1).to(device)
+        dt = 1.0 / sampling_steps 
+        
+        # Select model (EMA preferred)
+        model = self.net_g_ema if hasattr(self, 'net_g_ema') else self.net_g
+        model.eval()
+
+        with torch.no_grad():
+            # We loop through sampling_steps (e.g., 0 to 4 if steps=5)
+            for i in range(sampling_steps):
+                t = time_steps[i].expand(batch_size)
+                
+                # 3. Prepare 6-channel input
+                model_input = torch.cat([xt, lq], dim=1)
+                
+                # 4. Predict velocity (v)
+                # In Flow Matching, v = GT - Noise
+                with autocast('cuda', dtype=torch.bfloat16):
+                    v_pred = model(model_input, t)
+                
+                # 5. Euler Step: move xt TOWARD the clean image
+                # Since we go from t=0 to t=1, we ADD the velocity
+                # x_{t+dt} = x_t + (dt * v_pred)
+                xt = xt + dt * v_pred
+        
+        # Reset model to training mode if necessary
+        if self.is_train:
+            self.net_g.train()
+
+        # Clamp output to valid range
+        self.output = torch.clamp(xt, 0.0, 1.0)
