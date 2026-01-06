@@ -215,6 +215,14 @@ class SRFLOW(SRModel):
         # X_t = t * GT + (1 - t) * Noise
         # At t=0, xt is pure noise. At t=1, xt is the clean GT.
         xt = t * target_gt + (1.0 - t) * noise
+
+          # in inference it could drift off the perfect path, so i want it to learn to correct small errors
+        drift = torch.randn_like(xt) * 0.02 * (1.0 - t) # drift gets smaller as we approach gt
+        xt = xt + drift 
+        
+        # the target is the direction towards gt, scaled with 1-t to be the velocity and not the error (similar to target = gt-noise) 
+        v_target = (target_gt - xt) / (1.0 - t).clamp(min=1e-3)
+        
         
         # 3. Prepare Model Input
         # Concat the noisy image (xt) and the LR condition (lq) 
@@ -237,12 +245,8 @@ class SRFLOW(SRModel):
             # We pass the concatenated input and the time t (flattened for the embedding layer)
             v_pred = self.net_g(model_input, t.view(b))
             
-            # 5. Calculate Target and Loss
-            # Target velocity for Rectified Flow is: GT - Noise
-            target = target_gt - noise
-            
             # Standard Flow Matching loss is MSE on velocity
-            l_total = self.cri_pix(v_pred, target)
+            l_total = self.cri_pix(v_pred, v_target)
     
         # 6. Backward and Optimize
         scaled_loss = l_total / float(self.gradient_accumulation_steps)
