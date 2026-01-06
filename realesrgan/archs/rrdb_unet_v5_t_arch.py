@@ -9,7 +9,7 @@ from basicsr.archs.arch_util import default_init_weights
 import math
 
 class TimestepEmbedding(nn.Module):
-    def __init__(self, hidden_dim):
+    def __init__(self, hidden_dim = 256):
         super().__init__()
         self.mlp = nn.Sequential(
             nn.Linear(128, hidden_dim),
@@ -98,6 +98,20 @@ class HighwayRRDB(nn.Module):
         self.processing_channels = processing_channels
         self.use_attention = use_attention
 
+        self.lrelu = nn.LeakyReLU(negative_slope=0.2, inplace=True)
+        
+        # to modify features based on t conditioning
+        self.t_mlp = nn.Sequential(
+            nn.Linear(256, processing_channels),
+            self.lrelu,
+            nn.Linear(processing_channels, processing_channels * 2) 
+        )
+        
+        # Initialize the final layer to zero
+        # This ensures that at the start of training, the block acts like a normal SR block
+        nn.init.zeros_(self.t_mlp[-1].weight)
+        nn.init.zeros_(self.t_mlp[-1].bias)
+
         # Apply parallel dilated convolutions on the compressed feature map
         self.dc1 = nn.Conv2d(processing_channels, num_grow_ch, 3, 1, 1, dilation=1, padding_mode='reflect')
         self.dc2 = nn.Conv2d(processing_channels, num_grow_ch, 3, 1, 2, dilation=2, padding_mode='reflect')
@@ -123,8 +137,6 @@ class HighwayRRDB(nn.Module):
         if self.use_attention:
             self.channel_attention = ChannelAttention(highway_channels, highway_channels // 2)
 
-        self.lrelu = nn.LeakyReLU(negative_slope=0.2, inplace=True)
-
     def forward(self, highway_features, t_emb):
         # Compress highway features for processing
         processed = self.lrelu(self.compress(highway_features))
@@ -138,6 +150,16 @@ class HighwayRRDB(nn.Module):
             ],
             dim=1))
         )
+        
+        # t_emb conditioning
+        # 1. Generate local Scale (gamma) and Shift (beta)
+        # t_emb is (B, 256) -> t_params is (B, C*2, 1, 1)
+        t_params = self.t_mlp(t_emb).view(t_emb.size(0), -1, 1, 1)
+        gamma, beta = torch.chunk(t_params, 2, dim=1)
+
+        # 2. Apply modulation
+        # We use (1 + gamma) so that a zero-initialized gamma means "multiply by 1"
+        processed = processed * (1 + gamma) + beta
 
         # Dense processing
         processed = self.rdb1(processed)
@@ -165,19 +187,19 @@ class HighwayRRDB(nn.Module):
 
 
 @ARCH_REGISTRY.register()
-class RRDB_UNet_v4_t(nn.Module):
+class RRDB_UNet_v5_t(nn.Module):
 
     def __init__(self, num_in_ch, num_out_ch, highway_channels_base=32, processing_channels_base=16, num_grow_ch_base=8,
                  ae_rrdb_blocks=4, ae_channel_multipliers = [1,2,4,8,16],use_attention=True, body_rrdb_blocks=12, res1_add = True, memory_efficient_inference_device = None, inference = False):
 
-        super(RRDB_UNet_v4_t, self).__init__()
+        super(RRDB_UNet_v5_t, self).__init__()
 
         self.memory_efficient_inference_device = memory_efficient_inference_device
         self.inference = inference or self.memory_efficient_inference_device is not None
 
         self.res1_add = res1_add
 
-        self.timestep_embed = TimestepEmbedding(256)
+        self.timestep_embed = TimestepEmbedding()
 
         print("highway_channels_base", highway_channels_base)
         print("processing_channels_base", processing_channels_base)
