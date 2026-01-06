@@ -197,6 +197,13 @@ class SRFLOW(SRModel):
         b, c, h, w = self.gt.shape
         device = self.gt.device
         
+        # DECIDE TARGET: Use USM sharpened GT or regular GT?
+        usm_prob = self.opt['train'].get('usm_prob', 0.8)
+        if random.random() < usm_prob:
+            target_gt = self.gt_usm
+        else:
+            target_gt = self.gt
+        
         # Sample time t uniformly [0, 1]
         # We reshape to (b, 1, 1, 1) for correct broadcasting during mixing
         t = torch.rand((b, 1, 1, 1), device=device)
@@ -207,7 +214,7 @@ class SRFLOW(SRModel):
         # 2. Linear Interpolation (The Flow)
         # X_t = t * GT + (1 - t) * Noise
         # At t=0, xt is pure noise. At t=1, xt is the clean GT.
-        xt = t * self.gt + (1.0 - t) * noise
+        xt = t * target_gt + (1.0 - t) * noise
         
         # 3. Prepare Model Input
         # Concat the noisy image (xt) and the LR condition (lq) 
@@ -232,7 +239,7 @@ class SRFLOW(SRModel):
             
             # 5. Calculate Target and Loss
             # Target velocity for Rectified Flow is: GT - Noise
-            target = self.gt - noise
+            target = target_gt - noise
             
             # Standard Flow Matching loss is MSE on velocity
             l_total = self.cri_pix(v_pred, target)
