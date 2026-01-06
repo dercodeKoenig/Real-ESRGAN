@@ -232,7 +232,7 @@ class SRFLOW(SRModel):
             # Create a mask: 1 for keep, 0 for drop
             # We use a random check per-sample
             mask = torch.bernoulli(torch.ones(b, 1, 1, 1, device=device) * (1 - self.cond_dropout_prob))
-            cond = cond * mask 
+            cond = cond * mask + 0.5 * (1.0 - mask) # imgs are 0 to 1, so mean is about 0.5
     
         model_input = torch.cat([xt, cond], dim=1)
         
