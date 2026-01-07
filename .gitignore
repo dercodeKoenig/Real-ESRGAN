@@ -4,6 +4,7 @@ data/*
 experiments/*
 results/*
 tb_logger/*
+tb_logger_old/*
 wandb/*
 tmp/*
 weights/*
