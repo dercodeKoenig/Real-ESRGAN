@@ -11,10 +11,9 @@ from torch.nn import functional as F
 
 
 class RealSRFLOW():
-    def __init__(self, model_path, model, pre_pad=8, device="cuda", num_steps=20):
+    def __init__(self, model_path, model, pre_pad=8, device="cuda"):
         self.pre_pad = pre_pad
         self.device = device
-        self.num_steps = num_steps # Number of refinement steps
 
         if model_path is not None:
             loadnet = torch.load(model_path, map_location='cpu')
@@ -34,7 +33,7 @@ class RealSRFLOW():
         
         return img
 
-    def process(self, lq):
+    def process(self, lq, num_steps):
         """
         The Sampling Loop (Euler Method)
         Matches training: t=0 (Noise) -> t=1 (Clean)
@@ -45,13 +44,15 @@ class RealSRFLOW():
         xt = torch.randn_like(lq)
         
         # 2. Define timesteps (from 0.0 up to 1.0)
-        steps = torch.linspace(0.0, 1.0, self.num_steps + 1).to(self.device)
-        dt = 1.0 / self.num_steps 
+        steps = torch.linspace(0.0, 1.0, num_steps + 1).to(self.device)
+        dt = 1.0 / num_steps
+
+        eta = 0.2
     
         outputs = []
         
         with torch.no_grad():
-            for i in tqdm(range(self.num_steps)):
+            for i in tqdm(range(num_steps)):
                 t = steps[i].expand(batch_size)
                 
                 # 3. Prepare 6-channel input
@@ -65,6 +66,14 @@ class RealSRFLOW():
                 # 5. Euler Step: move xt forward toward t=1
                 # x_{t+dt} = x_t + (dt * v_pred)
                 xt = xt + dt * v_pred
+
+                # 3. Add Stochastic "Shake" (The Noise Back)
+                # We don't add noise on the very last step (t=1)
+                if i < num_steps - 1:
+                    # We scale by (1-t) because the model is trained to handle 
+                    # more drift/noise at the beginning than at the end.
+                    noise = torch.randn_like(xt)
+                    xt = xt + noise * eta * dt * (1.0 - steps[i+1])
                 
                 outputs.append(xt.detach().cpu())
     
@@ -82,14 +91,14 @@ class RealSRFLOW():
         return np.transpose(output_img, (1, 2, 0))
 
     @torch.no_grad()
-    def enhance(self, imgBGR):
+    def enhance(self, imgBGR, steps):
         # 1. Standardize input (0-1 range)
         img = imgBGR.astype(np.float32) / 255.0
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
         # 2. Run the pipeline
         lq_tensor = self.pre_process(img)
-        processed = self.process(lq_tensor) # This now runs the multi-step sampler
+        processed = self.process(lq_tensor, steps) # This now runs the multi-step sampler
         output_imgs = []
         for i in processed:
             output = self.post_process(i)
