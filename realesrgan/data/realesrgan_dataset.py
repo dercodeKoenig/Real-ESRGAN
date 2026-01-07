@@ -87,28 +87,29 @@ class RealESRGANDataset(data.Dataset):
         # -------------------------------- Load gt images -------------------------------- #
         # Shape: (h, w, c); channel order: BGR; image range: [0, 1], float32.
         gt_path = self.paths[index]
-        # avoid errors caused by high latency in reading files
-        retry = 3
-        while retry > 0:
+        
+        max_retry = 3
+        for attempt in range(max_retry):
             try:
                 img_bytes = self.file_client.get(gt_path, 'gt')
-            except (IOError, OSError) as e:
-                logger = get_root_logger()
-                logger.warn(f'File client error: {e}, remaining retry times: {retry - 1}')
-                # change another file to read
-                index = random.randint(0, self.__len__())
-                gt_path = self.paths[index]
-                time.sleep(1)  # sleep 1s for occasional server congestion
-            else:
+                img_gt = imfrombytes(img_bytes, float32=True)
+        
+                if img_gt is None:
+                    raise ValueError("Image decode returned None")
+        
+                # success
                 break
-            finally:
-                retry -= 1
+        
+            except Exception as e:
+                logger = get_root_logger()
+                logger.warning(
+                    f'Image load/decode error: {e}, '
+                    f'path: {gt_path}, retry: {max_retry - attempt - 1}'
+                )
+                index = random.randint(0, self.__len__() - 1)
+                gt_path = self.paths[index]
+                time.sleep(0.1)
 
-        try:
-            img_gt = imfrombytes(img_bytes, float32=True)
-        except Exception as e:
-            print("error image:", gt_path)
-            raise e
 
         # -------------------- Do augmentation for training: flip, rotation -------------------- #
         img_gt = augment(img_gt, self.opt['use_hflip'], self.opt['use_rot'])
