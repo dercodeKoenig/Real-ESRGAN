@@ -68,12 +68,11 @@ class RealSRFLOW():
                 xt = xt + dt * v_pred
 
                 # 3. Add Stochastic "Shake" (The Noise Back)
-                # We don't add noise on the very last step (t=1)
-                if i < num_steps - 1:
-                    # We scale by (1-t) because the model is trained to handle 
-                    # more drift/noise at the beginning than at the end.
-                    noise = torch.randn_like(xt)
-                    xt = xt + noise * eta * dt * (1.0 - steps[i+1])
+                
+                # We scale by (1-t) because the model is trained to handle 
+                # more drift/noise at the beginning than at the end.
+                noise = torch.randn_like(xt)
+                xt = xt + noise * eta * math.sqrt(dt) * (1.0 - steps[i+1])
                 
                 outputs.append(xt.detach().cpu())
     
