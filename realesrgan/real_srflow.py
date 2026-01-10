@@ -49,7 +49,7 @@ class RealSRFLOW():
 
         eta = 0.2
 
-        guidance_scale = 2
+        guidance_scale = 1
     
         outputs = []
         
