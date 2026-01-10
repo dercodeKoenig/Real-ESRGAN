@@ -39,7 +39,7 @@ class RealSRFIELD():
         
         xt = torch.randn_like(lq)
         
-        eta = 0.05
+        eta = 0.2
     
         outputs = []
         

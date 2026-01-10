@@ -301,9 +301,10 @@ class SRFIELD(SRModel):
                     pred = model(model_input)
 
                 noise = torch.randn_like(xt)
-                noise_scale = 0.1 * step_size * (1 - ((i+1) / sampling_steps))
+                noise_scale = 0.2 * step_size * (1 - ((i+1) / sampling_steps))
                 
-                xt = xt + pred * step_size + noise * noise_scale
+                xt = xt + pred * step_size 
+                xt = xt * (1-noise_scale) + noise * noise_scale
         
         # Reset model to training mode if necessary
         if not has_ema:
