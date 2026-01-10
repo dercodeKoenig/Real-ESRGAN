@@ -271,9 +271,11 @@ class SRFIELD(SRModel):
 
     def test(self):
         lq = (self.lq * 2.0) - 1.0 # scale to -1, 1
-        
-        sampling_steps = 20
+
+        # this should leave only about 1.3% noise if the model is perfect, close enough for testing without taking too long
+        sampling_steps = 40
         step_size = 0.1
+        
 
         batch_size, _, h, w = lq.shape
         device = lq.device
