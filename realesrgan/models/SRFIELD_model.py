@@ -202,6 +202,10 @@ class SRFIELD(SRModel):
             target_gt = self.gt_usm
         else:
             target_gt = self.gt
+
+            
+        target_gt = (target_gt * 2.0) - 1.0 # scale to -1, 1
+            
         
         # Sample time t uniformly [0, 1]
         # We reshape to (b, 1, 1, 1) for correct broadcasting during mixing
@@ -222,12 +226,12 @@ class SRFIELD(SRModel):
         # 3. Prepare Model Input
         # Concat the noisy image (xt) and the LR condition (lq) 
         # This results in a tensor with (C_xt + C_lq) channels (usually 3+3=6)
-        cond = self.lq
+        cond = (self.lq * 2.0) - 1.0 # scale to -1, 1
         if self.cond_dropout_prob > 0:
             # Create a mask: 1 for keep, 0 for drop
             # We use a random check per-sample
             mask = torch.bernoulli(torch.ones(b, 1, 1, 1, device=device) * (1 - self.cond_dropout_prob))
-            cond = cond * mask + 0.5 * (1.0 - mask) # imgs are 0 to 1, so mean is about 0.5
+            cond = cond * mask 
     
         model_input = torch.cat([xt, cond], dim=1)
         
@@ -266,7 +270,8 @@ class SRFIELD(SRModel):
 
 
     def test(self):
-        lq = self.lq
+        lq = (self.lq * 2.0) - 1.0 # scale to -1, 1
+        
         sampling_steps = 20
         step_size = 0.1
 
@@ -292,12 +297,18 @@ class SRFIELD(SRModel):
                 
                 with autocast('cuda', dtype=torch.bfloat16):
                     pred = model(model_input)
+
+                noise = torch.randn_like(xt)
+                noise_scale = 0.1 * step_size * (1 - ((i+1) / sampling_steps))
                 
-                xt = xt + pred * step_size
+                xt = xt + pred * step_size + noise * noise_scale
         
         # Reset model to training mode if necessary
         if not has_ema:
             self.net_g.train()
 
+
+        xt = (xt + 1) / 2 # from -1,1 to 0,1
+        
         # Clamp output to valid range
         self.output = torch.clamp(xt, 0.0, 1.0)
