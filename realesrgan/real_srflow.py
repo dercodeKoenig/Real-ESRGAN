@@ -48,6 +48,8 @@ class RealSRFLOW():
         dt = 1.0 / num_steps
 
         eta = 0.2
+
+        guidance_scale = 2
     
         outputs = []
         
@@ -55,17 +57,19 @@ class RealSRFLOW():
             for i in tqdm(range(num_steps)):
                 t = steps[i].expand(batch_size)
                 
-                # 3. Prepare 6-channel input
-                #xt = xt + torch.randn_like(xt) * 0.01 * (1-t)
-                model_input = torch.cat([xt, lq], dim=1)
-                
-                # 4. Predict velocity (v)
+                model_input_cond = torch.cat([xt, (lq*2)-1], dim=1)
+                model_input_uncond = torch.cat([xt, torch.zeros_like(lq)], dim=1)
+                if guidance_scale == 1:
+                    p_uncond = torch.zeros_like(lq)
+
                 with torch.amp.autocast(self.device):
-                    v_pred = self.model(model_input, t)
+                    p_cond = self.model(model_input_cond, t)
+                    if guidance_scale != 1:
+                        p_uncond = self.model(model_input_uncond, t)
                 
-                # 5. Euler Step: move xt forward toward t=1
-                # x_{t+dt} = x_t + (dt * v_pred)
-                xt = xt + dt * v_pred
+                pred = p_uncond + guidance_scale * (p_cond - p_uncond)
+
+                xt = xt + dt * pred
 
                 # 3. Add Stochastic "Shake" (The Noise Back)
                 
@@ -74,7 +78,7 @@ class RealSRFLOW():
                 noise = torch.randn_like(xt)
                 xt = xt + noise * eta * math.sqrt(dt) * (1.0 - steps[i+1])
                 
-                outputs.append(xt.detach().cpu())
+                outputs.append((xt.detach().cpu()+1)/2)
     
         return outputs
 

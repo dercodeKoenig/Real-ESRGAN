@@ -40,18 +40,29 @@ class RealSRFIELD():
         xt = torch.randn_like(lq)
         
         eta = 0.2
+
+        guidance_scale = 2
     
         outputs = []
         
         with torch.no_grad():
             for i in tqdm(range(num_steps)):
-                
-                model_input = torch.cat([xt, (lq*2)-1], dim=1)
-                
+
+                model_input_cond = torch.cat([xt, (lq*2)-1], dim=1)
+                model_input_uncond = torch.cat([xt, torch.zeros_like(lq)], dim=1)
+                if guidance_scale == 1:
+                    p_uncond = torch.zeros_like(lq)
+
                 with torch.amp.autocast(self.device):
-                    pred = self.model(model_input)
+                    p_cond = self.model(model_input_cond)
+                    if guidance_scale != 1:
+                        p_uncond = self.model(model_input_uncond)
                 
-                xt = xt +  pred * step_size
+                # CFG: Push the prediction AWAY from the "blurry/unconditioned" version
+                # guidance_scale > 1.0 (e.g., 1.5 or 3.0)
+                pred = p_uncond + guidance_scale * (p_cond - p_uncond)
+                
+                xt = xt + pred * step_size
 
                 noise = torch.randn_like(xt)
                 noise_scale = eta * step_size * (1.0 - ((i+1) / num_steps))

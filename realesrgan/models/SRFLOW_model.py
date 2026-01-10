@@ -203,6 +203,10 @@ class SRFLOW(SRModel):
             target_gt = self.gt_usm
         else:
             target_gt = self.gt
+
+                    
+        target_gt = (target_gt * 2.0) - 1.0 # scale to -1, 1
+
         
         # Sample time t uniformly [0, 1]
         # We reshape to (b, 1, 1, 1) for correct broadcasting during mixing
@@ -227,12 +231,12 @@ class SRFLOW(SRModel):
         # 3. Prepare Model Input
         # Concat the noisy image (xt) and the LR condition (lq) 
         # This results in a tensor with (C_xt + C_lq) channels (usually 3+3=6)
-        cond = self.lq
+        cond = (self.lq*2)-1
         if self.cond_dropout_prob > 0:
             # Create a mask: 1 for keep, 0 for drop
             # We use a random check per-sample
             mask = torch.bernoulli(torch.ones(b, 1, 1, 1, device=device) * (1 - self.cond_dropout_prob))
-            cond = cond * mask + 0.5 * (1.0 - mask) # imgs are 0 to 1, so mean is about 0.5
+            cond = cond * mask
     
         model_input = torch.cat([xt, cond], dim=1)
         
@@ -272,8 +276,8 @@ class SRFLOW(SRModel):
 
 
     def test(self):
-        lq = self.lq
-        sampling_steps = 5  # Renamed to avoid conflict with 'steps' tensor
+        lq = (self.lq*2)-1
+        sampling_steps = 10
 
         batch_size, _, h, w = lq.shape
         device = lq.device
@@ -318,4 +322,4 @@ class SRFLOW(SRModel):
             self.net_g.train()
 
         # Clamp output to valid range
-        self.output = torch.clamp(xt, 0.0, 1.0)
+        self.output = torch.clamp((xt+1)/2, 0.0, 1.0)
