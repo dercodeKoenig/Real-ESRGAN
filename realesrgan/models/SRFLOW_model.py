@@ -240,18 +240,11 @@ class SRFLOW(SRModel):
     
         model_input = torch.cat([xt, cond], dim=1)
         
-
-        # apply some noise to to t_cond (the model input) make it stable to small inference errors
-        t_cond = t + torch.randn_like(t) * 0.02 
-        t_cond = torch.abs(t_cond) # reflect t<0
-        t_cond = 1 - torch.abs(1-t_cond) # reflect t>1
-
-        
         # 4. Forward Pass
         with autocast('cuda', dtype=torch.bfloat16):
             # The model predicts the velocity 'v'
             # We pass the concatenated input and the time t (flattened for the embedding layer)
-            v_pred = self.net_g(model_input, t_cond.view(b))
+            v_pred = self.net_g(model_input, t.view(b))
             
             # Standard Flow Matching loss is MSE on velocity
             l_total = self.cri_pix(v_pred, v_target)
