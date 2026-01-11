@@ -193,7 +193,6 @@ class SRFLOW(SRModel):
     def optimize_parameters(self, current_iter):
         loss_dict = OrderedDict()
         
-        # 1. Setup Rectified Flow variables
         b, c, h, w = self.gt.shape
         device = self.gt.device
         
@@ -204,8 +203,9 @@ class SRFLOW(SRModel):
         else:
             target_gt = self.gt
 
-                    
-        target_gt = (target_gt * 2.0) - 1.0 # scale to -1, 1
+                     
+        # scale to -1, 1
+        target_gt = (target_gt * 2.0) - 1.0
 
         
         # Sample time t uniformly [0, 1]
@@ -220,7 +220,7 @@ class SRFLOW(SRModel):
         # At t=0, xt is pure noise. At t=1, xt is the clean GT.
         xt = t * target_gt + (1.0 - t) * noise
 
-          # in inference it could drift off the perfect path, so i want it to learn to correct small errors
+        # in inference it could drift off the perfect path, so i want it to learn to correct small errors
         drift = torch.randn_like(xt) * 0.02 * (1.0 - t) # drift gets smaller as we approach gt
         xt = xt + drift 
         
@@ -241,13 +241,17 @@ class SRFLOW(SRModel):
         model_input = torch.cat([xt, cond], dim=1)
         
 
-        
+        # apply some noise to to t_cond (the model input) make it stable to small inference errors
+        t_cond = t + torch.randn_like(t) * 0.02 
+        t_cond = torch.abs(t_cond) # reflect t<0
+        t_cond = 1 - torch.abs(1-t_cond) # reflect t>1
+
         
         # 4. Forward Pass
         with autocast('cuda', dtype=torch.bfloat16):
             # The model predicts the velocity 'v'
             # We pass the concatenated input and the time t (flattened for the embedding layer)
-            v_pred = self.net_g(model_input, t.view(b))
+            v_pred = self.net_g(model_input, t_cond.view(b))
             
             # Standard Flow Matching loss is MSE on velocity
             l_total = self.cri_pix(v_pred, v_target)
