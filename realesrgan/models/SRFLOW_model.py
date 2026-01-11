@@ -212,36 +212,15 @@ class SRFLOW(SRModel):
         # Sample time t uniformly [0, 1]
         # We reshape to (b, 1, 1, 1) for correct broadcasting during mixing
         t = torch.rand((b, 1, 1, 1), device=device)
-
-        # 2. Decision Mask (Bernoulli)
-        # 1 = use modified trajectory, 0 = use standard GT-only trajectory
-        p_modify = self.opt['train'].get('p_modify_trajectory', 0.5)
-        mask = torch.bernoulli(torch.ones(b, 1, 1, 1, device=device) * p_modify)
-
-        # 3. Randomized Blending Weight (w = "Amount of GT")
-        # We want w to be high when t is high, and random/low when t is low.
-        # Sampling a random offset so the blend isn't a fixed line.
-        random_shift = torch.rand((b, 1, 1, 1), device=device) * 0.5  # Randomness magnitude
-        w = (t + random_shift * (1-t)).clamp(0.0, 1.0) # when t -> 1 w -> gt
-
         
-        # 4. Create the Anchors
-        # modified_anchor: Mix of GT and LR (more LR when t is low)
-        modified_anchor = w * target_gt + (1.0 - w) * lr_input
-        
-        # 5. Combine using Mask
-        # If mask=1: we use the modified_anchor
-        # If mask=0: we use the original target_gt
-        xt_anchor = (mask * modified_anchor) + ((1.0 - mask) * target_gt)
-        
-        # 6. Apply the Flow
-        xt = t * xt_anchor + (1.0 - t) * noise
+        # Apply the Flow
+        xt = t * target_gt + (1.0 - t) * noise
 
         # in inference it could drift off the perfect path, so i want it to learn to correct small errors
         drift = torch.randn_like(xt) * 0.02 * (1.0 - t) # drift gets smaller as we approach gt
         xt = xt + drift 
 
-        # 7. Target (Always the sharp GT)
+        # Target (Always the sharp GT)
         # the target is the direction towards gt, scaled with 1-t to be the velocity and not the error (similar to target = gt-noise) 
         v_target = (target_gt - xt) / (1.0 - t).clamp(min=1e-3)
         
