@@ -301,9 +301,9 @@ class RRDB_UNet_v5_t(nn.Module):
 
         self.tail = nn.Sequential(
             # Note the input channels: cat_ch
-            nn.Conv2d(cat_ch, final_inner_ch, 3, 1, 1, padding_mode='reflect'),
+            nn.Conv2d(cat_ch, final_inner_ch, 3, 1, 1, padding_mode='zeros'), # reflect causes oom on large images, zeros has to do
             nn.LeakyReLU(negative_slope=0.01, inplace=True),
-            nn.Conv2d(final_inner_ch, final_inner_ch, 3, 1, 1, padding_mode='reflect'),
+            nn.Conv2d(final_inner_ch, final_inner_ch, 3, 1, 1, padding_mode='zeros'),
             nn.LeakyReLU(negative_slope=0.01, inplace=True),
             nn.Conv2d(final_inner_ch, num_out_ch, 1, 1, 0)
         )
