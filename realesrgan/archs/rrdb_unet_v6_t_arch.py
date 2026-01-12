@@ -204,7 +204,7 @@ class HighwayRRDB(nn.Module):
 class RRDB_UNet_v6_t(nn.Module):
 
     def __init__(self, num_in_ch, num_out_ch, highway_channels_base=32, processing_channels_base=16, num_grow_ch_base=8,
-                 ae_rrdb_blocks=4, ae_channel_multipliers = [1,2,4,8,16],use_attention=True, body_rrdb_blocks=12, res1_add = True, memory_efficient_inference_device = None, inference = False):
+                 encoder_blocks=4, decoder_blocks=6, ae_channel_multipliers = [1,2,4,8,16],use_attention=True, body_rrdb_blocks=12, res1_add = True, memory_efficient_inference_device = None, inference = False):
 
         super(RRDB_UNet_v6_t, self).__init__()
 
@@ -218,7 +218,8 @@ class RRDB_UNet_v6_t(nn.Module):
         print("highway_channels_base", highway_channels_base)
         print("processing_channels_base", processing_channels_base)
         print("num_grow_ch_base", num_grow_ch_base)
-        print("ae_rrdb_blocks", ae_rrdb_blocks)
+        print("encoder_blocks", encoder_blocks)
+        print("decoder_blocks", decoder_blocks)
         print("ae_channel_multipliers", ae_channel_multipliers)
         print("use_attention", use_attention)
         print("body_rrdb_blocks", body_rrdb_blocks)
@@ -239,7 +240,7 @@ class RRDB_UNet_v6_t(nn.Module):
             current_multiplier = ae_channel_multipliers[i]
             next_multiplier = ae_channel_multipliers[i+1]
             ## rrdbs
-            for _ in range(ae_rrdb_blocks):
+            for _ in range(encoder_blocks):
                 encoder_block.append(
                     HighwayRRDB(
                         highway_channels=highway_channels_base * current_multiplier,
@@ -291,7 +292,7 @@ class RRDB_UNet_v6_t(nn.Module):
             decoder_block.append(nn.LeakyReLU(negative_slope=0.01, inplace=True))
 
             ## rrdbs
-            for _ in range(ae_rrdb_blocks):
+            for _ in range(decoder_blocks):
                 decoder_block.append(
                     HighwayRRDB(
                         highway_channels=highway_channels_base * current_multiplier,
