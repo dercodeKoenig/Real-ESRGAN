@@ -228,7 +228,7 @@ class RRDB_UNet_v6_t(nn.Module):
 
         self.prep = nn.ModuleList()
         self.prep.append(nn.Conv2d(num_in_ch, highway_channels_base * ae_channel_multipliers[0], 3, 1, 1, padding_mode='reflect'))  # get the image to initial channel num
-        self.prep.append(nn.LeakyReLU(negative_slope=0.01, inplace=True))
+        #self.prep.append(nn.LeakyReLU(negative_slope=0.01, inplace=True))
 
         # create encoder
         self.encoder = nn.ModuleList()
