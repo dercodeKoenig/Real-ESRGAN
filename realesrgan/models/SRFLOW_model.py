@@ -47,6 +47,10 @@ class SRFLOW(SRModel):
         self.cond_dropout_prob = opt['train'].get('cond_dropout_prob', 0.0)
         print("cond_dropout_prob:", self.cond_dropout_prob)
 
+        
+        self.inference_steps = opt['val'].get('inference_steps', 10)
+        print("inference_steps:", self.inference_steps)
+
         self.check_ddp_consistency()
 
     @torch.no_grad()
@@ -272,7 +276,7 @@ class SRFLOW(SRModel):
 
     def test(self):
         lq = (self.lq*2)-1
-        sampling_steps = 10
+        sampling_steps = self.inference_steps
 
         batch_size, _, h, w = lq.shape
         device = lq.device

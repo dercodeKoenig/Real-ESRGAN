@@ -64,7 +64,7 @@ datasets:
     # data loader
     use_shuffle: true
     num_worker_per_gpu: 1
-    batch_size_per_gpu: 2
+    batch_size_per_gpu: 1
     dataset_enlarge_ratio: 1
     prefetch_mode: ~
 
@@ -88,7 +88,7 @@ network_g:
   ae_rrdb_blocks: 5
   ae_channel_multipliers: [1,2,4,8,16]
   use_attention: True
-  body_rrdb_blocks: 12
+  body_rrdb_blocks: 11
   res1_add: False
 
 # path
@@ -100,8 +100,8 @@ path:
 
 # training settings
 train:
-  ema_decay: 0.999
-  #ema_decay: 0.0
+  #ema_decay: 0.9999
+  ema_decay: 0.0
   optim_g:
     type: AdamW
     lr: 0.0001
@@ -133,6 +133,7 @@ train:
 val:
    val_freq: 4000
    save_img: True
+   inference_steps: 16
 
    metrics:
      psnr: # metric name
