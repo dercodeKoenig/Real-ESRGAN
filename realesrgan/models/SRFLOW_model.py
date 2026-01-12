@@ -43,8 +43,8 @@ class SRFLOW(SRModel):
         self._accum_steps = 0  # internal counter for gradient accumulation
         print("gradient_accumulation_steps:",  self.gradient_accumulation_steps)
 
-        # Get dropout probability (default to 0.1 if not specified)
-        self.cond_dropout_prob = opt['train'].get('cond_dropout_prob', 0.1)
+        # Get dropout probability
+        self.cond_dropout_prob = opt['train'].get('cond_dropout_prob', 0.0)
         print("cond_dropout_prob:", self.cond_dropout_prob)
 
         self.check_ddp_consistency()
