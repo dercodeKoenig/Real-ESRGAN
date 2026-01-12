@@ -45,7 +45,7 @@ class ChannelAttention(nn.Module):
             nn.Sigmoid()
         )
 
-    def forward(self, x, t_emb):
+    def forward(self, x, t_emb, inference):
         b, c, h, w = x.shape
         
         # 1. Squeeze: Global Average Pooling
@@ -59,7 +59,10 @@ class ChannelAttention(nn.Module):
         attention_weights = self.mlp(combined) # Shape: (B, C, 1, 1)
         
         # 4. Scale original features
-        return x * attention_weights
+        if not inference:
+            return x * attention_weights
+        else:
+            return x.mul_(attention_weights) # x should not be required anywhere else
 
 
 class ResidualDenseBlock(nn.Module):
@@ -85,14 +88,14 @@ class ResidualDenseBlock(nn.Module):
         x5 = self.lrelu(self.conv5(torch.cat((x, x1, x2, x3, x4), 1)))
         return x5 * 0.2 + x
 
-
 class HighwayRRDB(nn.Module):
     """Highway RRDB Block with feature compression/expansion."""
 
-    def __init__(self, highway_channels, processing_channels=64, num_grow_ch=32, use_attention=True, inference = False):
+    def __init__(self, highway_channels, processing_channels=64, num_grow_ch=32, use_attention=True, inference = False, memory_efficient_inference_device = None):
         super(HighwayRRDB, self).__init__()
 
         self.inference = inference
+        self.memory_efficient_inference_device = memory_efficient_inference_device
 
         self.highway_channels = highway_channels
         self.processing_channels = processing_channels
@@ -113,10 +116,10 @@ class HighwayRRDB(nn.Module):
         nn.init.zeros_(self.t_mlp[-1].bias)
 
         # Apply parallel dilated convolutions on the compressed feature map
-        self.dc1 = nn.Conv2d(processing_channels, num_grow_ch, 3, 1, 1, dilation=1, padding_mode='reflect')
-        self.dc2 = nn.Conv2d(processing_channels, num_grow_ch, 3, 1, 2, dilation=2, padding_mode='reflect')
-        self.dc3 = nn.Conv2d(processing_channels, num_grow_ch, 3, 1, 3, dilation=3, padding_mode='reflect')
-        self.dc4 = nn.Conv2d(processing_channels, num_grow_ch, 3, 1, 4, dilation=4, padding_mode='reflect')
+        self.dc1 = nn.Conv2d(processing_channels, num_grow_ch, 3, 1, 1, dilation=1, padding_mode='zeros')
+        self.dc2 = nn.Conv2d(processing_channels, num_grow_ch, 3, 1, 2, dilation=2, padding_mode='zeros')
+        self.dc3 = nn.Conv2d(processing_channels, num_grow_ch, 3, 1, 3, dilation=3, padding_mode='zeros')
+        self.dc4 = nn.Conv2d(processing_channels, num_grow_ch, 3, 1, 4, dilation=4, padding_mode='zeros')
         # Fusion layer to combine the outputs of the dilated convolutions
         self.context_fusion = nn.Conv2d(num_grow_ch * 4, processing_channels, 3, 1, 1, padding_mode='zeros')
 
@@ -130,26 +133,35 @@ class HighwayRRDB(nn.Module):
 
         # Expansion: Processing → Highway
         # Using 3x3 for spatial-aware mixing before expansion
-        self.pre_expand = nn.Conv2d(processing_channels, processing_channels, kernel_size=3, padding=1, padding_mode='reflect')
+        self.pre_expand = nn.Conv2d(processing_channels, processing_channels, kernel_size=3, padding=1, padding_mode='zeros')
         self.expand = nn.Conv2d(processing_channels, highway_channels, kernel_size=1)
 
         # Channel attention on highway features
         if self.use_attention:
             self.channel_attention = ChannelAttention(highway_channels, highway_channels // 2)
 
-    def forward(self, highway_features, t_emb):
-        # Compress highway features for processing
-        processed = self.lrelu(self.compress(highway_features))
+    def forward(self, highway_features_container, t_emb):
+        # highway_features_container is a list of 1 highway_features to allow for offloading to cpu and avoid holding a reference in the calling method that prevents cpu offload
 
-        processed = processed + self.lrelu(self.context_fusion(torch.cat(
-            [
-                self.lrelu(self.dc1(processed)),
-                self.lrelu(self.dc2(processed)),
-                self.lrelu(self.dc3(processed)),
-                self.lrelu(self.dc4(processed))
-            ],
-            dim=1))
-        )
+        # Compress highway features for processing
+        processed = self.lrelu(self.compress(highway_features_container[0]))
+
+        if self.memory_efficient_inference_device is not None:
+          highway_features_container[0] = highway_features_container[0].to("cpu")
+          torch.cuda.empty_cache()
+
+        combined = self.lrelu(self.dc1(processed))
+        combined = torch.cat([combined, self.lrelu(self.dc2(processed))], dim=1)
+        combined = torch.cat([combined, self.lrelu(self.dc3(processed))], dim=1)
+        combined = torch.cat([combined, self.lrelu(self.dc4(processed))], dim=1)
+        combined = self.lrelu(self.context_fusion(combined))
+        
+        processed = processed + combined
+        del combined
+
+        if self.inference:
+          torch.cuda.empty_cache()
+
         
         # t_emb conditioning
         # 1. Generate local Scale (gamma) and Shift (beta)
@@ -174,19 +186,21 @@ class HighwayRRDB(nn.Module):
 
         # Apply channel attention
         if self.use_attention:
-            expanded = self.channel_attention(expanded, t_emb)
+            expanded = self.channel_attention(expanded, t_emb, self.inference)
+
+        if self.memory_efficient_inference_device is not None:
+            highway_features_container[0] = highway_features_container[0].to(self.memory_efficient_inference_device)
 
         if not self.inference:
             # Training: keep safe for autograd
-            return highway_features + expanded * 0.2
+            return highway_features_container[0] + expanded * 0.2
         else:
             # Inference: do it in-place to save VRAM, very important for processing large images!
             expanded.mul_(0.2)
-            expanded.add_(highway_features) # dont modify highway_features, it might be used elsewhere. but expanded is no longer used so it can modify inplace
+            expanded.add_(highway_features_container[0]) # dont modify highway_features, it might be used elsewhere. but expanded is no longer used so it can modify inplace
             return expanded
 
 
-@ARCH_REGISTRY.register()
 class RRDB_UNet_v5_t(nn.Module):
 
     def __init__(self, num_in_ch, num_out_ch, highway_channels_base=32, processing_channels_base=16, num_grow_ch_base=8,
@@ -232,7 +246,8 @@ class RRDB_UNet_v5_t(nn.Module):
                         processing_channels=processing_channels_base * current_multiplier,
                         num_grow_ch=num_grow_ch_base * current_multiplier,
                         use_attention=use_attention,
-                        inference = self.inference
+                        inference = self.inference,
+                        memory_efficient_inference_device = self.memory_efficient_inference_device
                     )
                 )
             ## pixelUnShuffle & channel match for next block
@@ -252,7 +267,8 @@ class RRDB_UNet_v5_t(nn.Module):
                     processing_channels=processing_channels_base * body_channel_multiplier,
                     num_grow_ch=num_grow_ch_base * body_channel_multiplier,
                     use_attention=use_attention,
-                    inference = self.inference
+                    inference = self.inference,
+                    memory_efficient_inference_device = self.memory_efficient_inference_device
                 )
             )
 
@@ -282,7 +298,8 @@ class RRDB_UNet_v5_t(nn.Module):
                         processing_channels=processing_channels_base * current_multiplier,
                         num_grow_ch=num_grow_ch_base * current_multiplier,
                         use_attention=use_attention,
-                        inference = self.inference
+                        inference = self.inference,
+                        memory_efficient_inference_device = self.memory_efficient_inference_device
                     )
                 )
             self.decoder.append(decoder_block)
@@ -354,6 +371,7 @@ class RRDB_UNet_v5_t(nn.Module):
                     element.to(self.memory_efficient_inference_device)
                 
                 if isinstance(element, HighwayRRDB):
+                    feat = [feat] # to allow cpu offload, the features are wrapped in a list
                     feat = element(feat, t_emb) # Pass t_emb
                 else:
                     feat = element(feat) # Standard Conv/Shuffle
@@ -374,6 +392,7 @@ class RRDB_UNet_v5_t(nn.Module):
                 element.to(self.memory_efficient_inference_device)
                 
             if isinstance(element, HighwayRRDB):
+                feat = [feat]
                 feat = element(feat, t_emb) # Pass t_emb
             else:
                 feat = element(feat) # Standard Conv/Shuffle
@@ -399,6 +418,7 @@ class RRDB_UNet_v5_t(nn.Module):
                     element.to(self.memory_efficient_inference_device)
                 
                 if isinstance(element, HighwayRRDB):
+                    feat = [feat]
                     feat = element(feat, t_emb) # Pass t_emb
                 else:
                     feat = element(feat) # Standard Conv/Shuffle
