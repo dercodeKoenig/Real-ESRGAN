@@ -200,7 +200,7 @@ class HighwayRRDB(nn.Module):
             expanded.add_(highway_features_container[0]) # dont modify highway_features, it might be used elsewhere. but expanded is no longer used so it can modify inplace
             return expanded
 
-
+@ARCH_REGISTRY.register()
 class RRDB_UNet_v6_t(nn.Module):
 
     def __init__(self, num_in_ch, num_out_ch, highway_channels_base=32, processing_channels_base=16, num_grow_ch_base=8,
