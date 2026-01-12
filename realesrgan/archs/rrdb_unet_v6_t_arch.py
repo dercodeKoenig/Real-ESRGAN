@@ -201,12 +201,12 @@ class HighwayRRDB(nn.Module):
             return expanded
 
 
-class RRDB_UNet_v5_t(nn.Module):
+class RRDB_UNet_v6_t(nn.Module):
 
     def __init__(self, num_in_ch, num_out_ch, highway_channels_base=32, processing_channels_base=16, num_grow_ch_base=8,
                  ae_rrdb_blocks=4, ae_channel_multipliers = [1,2,4,8,16],use_attention=True, body_rrdb_blocks=12, res1_add = True, memory_efficient_inference_device = None, inference = False):
 
-        super(RRDB_UNet_v5_t, self).__init__()
+        super(RRDB_UNet_v6_t, self).__init__()
 
         self.memory_efficient_inference_device = memory_efficient_inference_device
         self.inference = inference or self.memory_efficient_inference_device is not None
