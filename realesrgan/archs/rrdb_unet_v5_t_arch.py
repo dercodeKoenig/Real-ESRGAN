@@ -361,7 +361,12 @@ class RRDB_UNet_v5_t(nn.Module):
                 if self.memory_efficient_inference_device != None:
                     element.to("cpu")
                     torch.cuda.empty_cache()
-            residuals.append(feat)
+            
+            if self.memory_efficient_inference_device != None:
+              residuals.append(feat.to("cpu"))
+              torch.cuda.empty_cache()
+            else:
+              residuals.append(feat)
 
 
         for element in self.body:
@@ -380,9 +385,14 @@ class RRDB_UNet_v5_t(nn.Module):
 
         # run through decoder and insert residuals
         for decoder_block in self.decoder:
-
-            feat = torch.cat([feat, residuals[-1]], dim=1)
-            del residuals[-1] # this is no longer required, delete to free memory
+            residual = residuals.pop()
+            if self.memory_efficient_inference_device != None:
+              residual = residual.to(self.memory_efficient_inference_device)
+            feat = torch.cat([feat, residual], dim=1)
+            
+            del residual # this is no longer required, delete to free memory
+            if self.inference:
+                torch.cuda.empty_cache() # because the residual was deleted, free up the gpu memory
 
             for element in decoder_block:
                 if self.memory_efficient_inference_device != None:
@@ -396,9 +406,7 @@ class RRDB_UNet_v5_t(nn.Module):
                 if self.memory_efficient_inference_device != None:
                     element.to("cpu")
                     torch.cuda.empty_cache()
-
-            if self.inference:
-                torch.cuda.empty_cache() # because the residual was deleted, free up the gpu memory
+            
 
         # Instead of just adding the original image at the very end, we concatenate features + img here so that it can do some final refinement with consideration of the original image
         feat = torch.cat([feat, res1], dim=1)
