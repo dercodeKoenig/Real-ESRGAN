@@ -314,7 +314,7 @@ class RRDB_UNet_v5_t(nn.Module):
         feat_ch = highway_channels_base * base_multiplier
         cat_ch = feat_ch + num_in_ch
 
-        final_inner_ch = (processing_channels_base + highway_channels_base) * base_multiplier # TODO: this is too wide, needs to be reduced or oom for larger models
+        final_inner_ch = (highway_channels_base) * base_multiplier
 
         self.tail = nn.Sequential(
             # Note the input channels: cat_ch
