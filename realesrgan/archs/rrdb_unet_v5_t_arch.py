@@ -237,7 +237,7 @@ class RRDB_UNet_v5_t(nn.Module):
                 )
             ## pixelUnShuffle & channel match for next block
             encoder_block.append(nn.PixelUnshuffle(2))
-            encoder_block.append(nn.Conv2d(highway_channels_base * current_multiplier * 4, highway_channels_base * next_multiplier, 3, 1,1, padding_mode='reflect'))  # from 4x pixelUnShuffle channel growth to target channels for the next encoder block
+            encoder_block.append(nn.Conv2d(highway_channels_base * current_multiplier * 4, highway_channels_base * next_multiplier, 3, 1,1, padding_mode='zeros'))  # from 4x pixelUnShuffle channel growth to target channels for the next encoder block
             encoder_block.append(nn.LeakyReLU(negative_slope=0.01, inplace=True))
 
             self.encoder.append(encoder_block)
@@ -265,13 +265,13 @@ class RRDB_UNet_v5_t(nn.Module):
             decoder_block = nn.ModuleList()
 
             # the encoder residual is is concat to the features and then channels are reduced again
-            decoder_block.append(nn.Conv2d(highway_channels_base * last_multiplier * 2, highway_channels_base * last_multiplier, 3,1,1, padding_mode='reflect'))
+            decoder_block.append(nn.Conv2d(highway_channels_base * last_multiplier * 2, highway_channels_base * last_multiplier, 3,1,1, padding_mode='zeros'))
             decoder_block.append(nn.LeakyReLU(negative_slope=0.01, inplace=True))
 
 
             ## pixelShuffle input up
             decoder_block.append(nn.PixelShuffle(2))
-            decoder_block.append(nn.Conv2d(highway_channels_base * last_multiplier // 4, highway_channels_base * current_multiplier, 3, 1, 1, padding_mode='reflect'))  # from 1/4x pixelShuffle channel growth to target channels for the current decoder block
+            decoder_block.append(nn.Conv2d(highway_channels_base * last_multiplier // 4, highway_channels_base * current_multiplier, 3, 1, 1, padding_mode='zeros'))  # from 1/4x pixelShuffle channel growth to target channels for the current decoder block
             decoder_block.append(nn.LeakyReLU(negative_slope=0.01, inplace=True))
 
             ## rrdbs
