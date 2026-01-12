@@ -85,10 +85,10 @@ network_g:
   highway_channels_base: 64
   processing_channels_base: 32
   num_grow_ch_base: 16
-  ae_rrdb_blocks: 5
-  ae_channel_multipliers: [1,2,4,8,16]
+  ae_rrdb_blocks: 6
+  ae_channel_multipliers: [1,3,9,18]
   use_attention: True
-  body_rrdb_blocks: 11
+  body_rrdb_blocks: 16
   res1_add: False
 
 # path
