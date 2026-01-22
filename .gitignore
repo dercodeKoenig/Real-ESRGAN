@@ -12,6 +12,8 @@ torch_cache/*
 
 version.py
 
+meta_info.txt
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
