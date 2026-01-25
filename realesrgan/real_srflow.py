@@ -19,6 +19,7 @@ class RealSRFLOW():
             loadnet = torch.load(model_path, map_location='cpu')
             keyname = 'params_ema' if 'params_ema' in loadnet else 'params'
             model.load_state_dict(loadnet[keyname], strict=True)
+            print("loaded", keyname)
         
         model.eval()
         self.model = model
