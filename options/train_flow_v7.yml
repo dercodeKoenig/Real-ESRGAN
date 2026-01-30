@@ -27,7 +27,7 @@ gray_noise_prob2: 0.4
 jpeg_range2: [30, 95]
 
 gt_size: 512
-queue_size: 4
+queue_size: 8
 
 # dataset and data loader settings
 datasets:
@@ -106,7 +106,7 @@ train:
   optim_g:
     type: AdamW8bit
     lr: 0.0001
-    weight_decay: 0.000001
+    weight_decay: 0.00001
     betas: [0.9, 0.99]
 
   scheduler:
@@ -116,7 +116,7 @@ train:
 
   total_iter: 16000000
   warmup_iter: 1000
-  gradient_accumulation_steps: 4
+  gradient_accumulation_steps: 64
   min_scale: 1
   max_scale: 6
   use_compile: False
@@ -153,7 +153,7 @@ val:
 # logging settings
 logger:
   print_freq: 64
-  save_checkpoint_freq: 20000
+  save_checkpoint_freq: 50000
   use_tb_logger: true
 
 # dist training settings
