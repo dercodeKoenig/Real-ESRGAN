@@ -29,7 +29,7 @@ class SRFLOW(SRModel):
 
         if(opt['train'].get("use_compile", True)):
             print("using model compile")
-            self.net_g.compile(dynamic=False) 
+            self.net_g.compile(dynamic=False, mode="max-autotune-no-cudagraphs")  # cudagraphs not work with gradient accumulation
 
         self.jpeger = DiffJPEG(differentiable=False).to(self.device)  # simulate JPEG compression artifacts
         self.usm_sharpener = USMSharp().to(self.device)  # do usm sharpening
