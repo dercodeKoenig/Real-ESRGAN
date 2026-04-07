@@ -6,6 +6,7 @@ os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 import os.path as osp
 from basicsr.train import train_pipeline
 
+# register the models / archs to the basicsr registry
 import realesrgan.archs
 import realesrgan.data
 import realesrgan.models
