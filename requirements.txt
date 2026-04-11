@@ -4,9 +4,10 @@ gfpgan>=1.3.5
 numpy
 opencv-python
 Pillow
-torch>=1.7
+torch>=2.9
 torchvision
 tqdm
 
+torchao
 rotary-embedding-torch
 bitsandbytes

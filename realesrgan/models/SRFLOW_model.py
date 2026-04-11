@@ -13,6 +13,8 @@ from basicsr.models.sr_model import SRModel
 from basicsr.utils import DiffJPEG, USMSharp
 from basicsr.utils.img_process_util import filter2D
 from basicsr.utils.registry import MODEL_REGISTRY
+from basicsr.utils import get_root_logger
+
 
 import torch.distributed as dist
 
@@ -53,6 +55,25 @@ class SRFLOW(SRModel):
 
         self.check_ddp_consistency()
 
+    def model_to_device(self, net):
+        # 1. Manually move to device FIRST. 
+        # TorchAO needs to know the device to initialize the FP8 scaling buffers.
+        net = net.to(self.device)
+    
+        # 2. Perform the Float8 Conversion.
+        # This happens in-place on the raw model.
+        if self.is_train and hasattr(net, 'fp8_filter_fn'):
+            from torchao.float8 import convert_to_float8_training
+            convert_to_float8_training(net, module_filter_fn=net.fp8_filter_fn)
+            
+            logger = get_root_logger()
+            logger.info(f"torchao FP8 conversion applied to {net.__class__.__name__}")
+    
+        # 3. Call super() to handle the DDP/DP wrapping.
+        # Even though super() will call net.to(self.device) again, 
+        # PyTorch is smart enough to see it's already there and do nothing.
+        return super().model_to_device(net)
+    
     @torch.no_grad()
     def feed_data(self, data):
         """Accept data from dataloader and add degradations with dynamic scaling."""
