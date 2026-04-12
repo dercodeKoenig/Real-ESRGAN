@@ -64,7 +64,7 @@ datasets:
     # data loader
     use_shuffle: true
     num_worker_per_gpu: 1
-    batch_size_per_gpu: 2
+    batch_size_per_gpu: 4
     dataset_enlarge_ratio: 1
     prefetch_mode: ~
 
@@ -86,11 +86,11 @@ network_g:
   processing_channels_base: 32
   num_grow_ch_base: 16
   encoder_blocks: 1
-  decoder_blocks: 2
-  ae_channel_multipliers: [1,2,4,16]
+  decoder_blocks: 1
+  ae_channel_multipliers: [1,2,4,12]
   body_rrdb_blocks: 2
   body_dit_blocks: 24
-  dit_heads: 16
+  dit_heads: 12
   dit_head_dim: 64
   t_hidden_dim: 1024
   checkpoint: False
@@ -119,7 +119,7 @@ train:
 
   total_iter: 16000000
   warmup_iter: 1000
-  gradient_accumulation_steps: 32
+  gradient_accumulation_steps: 16
   min_scale: 1
   max_scale: 6
   use_compile: True
@@ -134,7 +134,7 @@ train:
 
 # validation settings
 val:
-   val_freq: 5000
+   val_freq: 10000
    save_img: True
    inference_steps: 16
 

@@ -614,7 +614,7 @@ class RRDB_UNet_v9_t(nn.Module):
         # convert the linear layers in the transformer to fp8
         # "dit" is the transformer module list
         # this includes to_qkv, to_out, the 2 ffn
-        if fqn.startswith("dit") and not "time_mlp" in fqn:
+        if fqn.startswith("dit") and not "time_mlp" in fqn: 
             print("fp8 allowed for", fqn)
             return True
         return False
