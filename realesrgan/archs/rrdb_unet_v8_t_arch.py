@@ -386,7 +386,8 @@ class RRDB_UNet_v8_t(nn.Module):
                 DiTBlock(
                     dim = highway_channels_base * body_channel_multiplier, 
                     heads = 12,
-                    dim_head = highway_channels_base * body_channel_multiplier // 8
+                    dim_head = highway_channels_base * body_channel_multiplier // 8,
+                    time_dim = t_hidden_dim
                 )
             )
 

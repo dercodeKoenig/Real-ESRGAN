@@ -29,6 +29,8 @@ class SRFLOW(SRModel):
     def __init__(self, opt):
         super(SRFLOW, self).__init__(opt)
 
+        self.net_g.to(memory_format=torch.channels_last)
+        
         if(opt['train'].get("use_compile", True)):
             print("using model compile")
             self.net_g.compile(dynamic=False, mode="max-autotune-no-cudagraphs")  # cudagraphs not work with gradient accumulation
@@ -62,7 +64,7 @@ class SRFLOW(SRModel):
     
         # 2. Perform the Float8 Conversion.
         # This happens in-place on the raw model.
-        if self.is_train and hasattr(net, 'fp8_filter_fn'):
+        if self.is_train and hasattr(net, 'fp8_filter_fn'): 
             from torchao.float8 import convert_to_float8_training
             convert_to_float8_training(net, module_filter_fn=net.fp8_filter_fn)
             
@@ -78,7 +80,7 @@ class SRFLOW(SRModel):
     def feed_data(self, data):
         """Accept data from dataloader and add degradations with dynamic scaling."""
         if self.is_train and self.opt.get('high_order_degradation', True):
-            self.gt = data['gt'].to(self.device)
+            self.gt = data['gt'].to(self.device).to(memory_format=torch.channels_last)
             self.gt_usm = self.usm_sharpener(self.gt)
 
             self.kernel1 = data['kernel1'].to(self.device)
@@ -177,12 +179,11 @@ class SRFLOW(SRModel):
             # Random crop both GT and LQ
             gt_size = self.opt['gt_size']
             (self.gt, self.gt_usm), self.lq = paired_random_crop([self.gt, self.gt_usm], self.lq, gt_size, 1)
-
-            self.lq = self.lq.contiguous()  # for the warning: grad and param do not obey the gradient layout contract
+            
         else:
             # For validation - interpolate LQ to GT size
-            self.lq_orig = data['lq'].to(self.device)
-            self.gt = data['gt'].to(self.device)
+            self.lq_orig = data['lq'].to(self.device).to(memory_format=torch.channels_last)
+            self.gt = data['gt'].to(self.device).to(memory_format=torch.channels_last)
             # Interpolate LQ to GT size
             self.lq = F.interpolate(self.lq_orig, size=self.gt.shape[-2:], mode='bicubic', align_corners=False)
 
