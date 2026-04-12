@@ -608,11 +608,12 @@ class RRDB_UNet_v8_t(nn.Module):
 
 
     # torchao can convert linear layers into float8, this method allows torchao to know what to convert if we decide to convert
-    def fp8_filter_fn(self, module, fqn):
-        # convert the linear layers in the transformer to fp8
-        # "dit" is the transformer module list
-        # this includes to_qkv, to_out, the 2 ffn
-        if fqn.startswith("dit") and not "time_mlp" in fqn:
-            print("fp8 allowed for", fqn)
-            return True
-        return False
+    # i think this doesnt make any speed boost so i ignore it
+    #def fp8_filter_fn(self, module, fqn):
+    #    # convert the linear layers in the transformer to fp8
+    #    # "dit" is the transformer module list
+    #    # this includes to_qkv, to_out, the 2 ffn
+    #    if fqn.startswith("dit") and not "time_mlp" in fqn:
+    #        print("fp8 allowed for", fqn)
+    #        return True
+    #    return False
