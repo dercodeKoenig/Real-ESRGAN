@@ -85,8 +85,8 @@ network_g:
   highway_channels_base: 64
   processing_channels_base: 32
   num_grow_ch_base: 16
-  encoder_blocks: 1
-  decoder_blocks: 1
+  encoder_blocks: 2
+  decoder_blocks: 2
   ae_channel_multipliers: [1,2,4,12]
   body_rrdb_blocks: 2
   body_dit_blocks: 24
