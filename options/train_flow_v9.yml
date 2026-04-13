@@ -123,6 +123,7 @@ train:
   min_scale: 1
   max_scale: 6
   use_compile: True
+  use_fp8: True
 
 
   # losses
