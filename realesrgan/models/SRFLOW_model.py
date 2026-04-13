@@ -65,11 +65,13 @@ class SRFLOW(SRModel):
         # 2. Perform the Float8 Conversion.
         # This happens in-place on the raw model.
         if self.is_train and hasattr(net, 'fp8_filter_fn'): 
-            from torchao.float8 import convert_to_float8_training
-            convert_to_float8_training(net, module_filter_fn=net.fp8_filter_fn)
-            
             logger = get_root_logger()
-            logger.info(f"torchao FP8 conversion applied to {net.__class__.__name__}")
+            if self.opt['train'].get('use_fp8', False):
+                from torchao.float8 import convert_to_float8_training
+                convert_to_float8_training(net, module_filter_fn=net.fp8_filter_fn)
+                logger.info(f"torchao FP8 conversion applied to {net.__class__.__name__}")
+            else:
+                logger.info("arch class provides fp8_filter_fn, but use_fp8 disabled by current config")
     
         # 3. Call super() to handle the DDP/DP wrapping.
         # Even though super() will call net.to(self.device) again, 
