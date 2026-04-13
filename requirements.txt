@@ -1,5 +1,5 @@
 BasicSR @ git+https://github.com/dercodeKoenig/BasicSR
-facexlib @ https://github.com/dercodeKoenig/facexlib
+facexlib @ git+https://github.com/dercodeKoenig/facexlib
 gfpgan @ git+https://github.com/dercodeKoenig/GFPGAN
 numpy
 opencv-python
