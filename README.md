@@ -1,4 +1,4 @@
-Fixed version of ESRGAN for more modern pyorch.
+Fixed version of ESRGAN for more modern pytorch.
 
 You can run ESRGAN and other upscaling models for free at https://image-upscaling.net/
 
