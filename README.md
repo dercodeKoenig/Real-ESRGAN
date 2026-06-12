@@ -1,4 +1,7 @@
-Fixed version of ESRGAN for more modern pytorch.
+Note: I left this repo to build on my own training code. 
+This repo is a mess of experiments and probably has a few bugs.
+The original utils/realesrganer should still work well enough for inference.
+
 
 You can run ESRGAN and other upscaling models for free at https://image-upscaling.net/
 
